@@ -72,32 +72,51 @@ design/                      # Referencias visuales (no es código de la app)
 
 ## Parser de correos Qik
 
-Los correos llegan de `ayuda@qik.com.do`. Formato típico del cuerpo
-(HTML o texto; el parser convierte HTML a texto y tolera valores en la
-misma línea o en la línea siguiente, como en tablas):
+Los correos transaccionales llegan de **`no-reply-qik@qik.com.do`**.
+`ayuda@qik.com.do` **no es el remitente** — es solo la dirección de soporte
+que Qik menciona en el pie de página de sus correos; filtrar por ella hace
+que el sync nunca encuentre nada (bug real detectado y corregido el
+2026-07-02, ver git log). Los promocionales vienen de otro remitente
+(`promociones@mail.qik.com.do`) y quedan excluidos automáticamente.
 
-```
-Localidad: SUPERMERCADO NACIONAL
-Fecha y hora: 05-06-2026 02:32 PM (AST)
-Monto: RD$ 2,840.50
-Balance Disponible: RD$ 48,210.35
-```
+Qik **no envía las compras con tarjeta débito/crédito por correo** (solo
+llegan como notificación push al celular). Los tipos de correo
+transaccionales confirmados contra la bandeja real son:
 
-- **Fecha**: formato `MM-DD-YYYY HH:MM AM/PM (AST)`. AST = UTC-4 fijo
-  (RD no tiene horario de verano); se convierte a UTC al guardar.
-- **Tipo**: asunto con "transacción"/"compra"/"consumo"/"retiro"/"pago" →
-  gasto; "transferencia recibida"/"depósito" → ingreso; si el asunto es
-  ambiguo se refuerza con el cuerpo. Default: gasto.
-- **Tarjeta**: últimos 4 dígitos desde "terminada en NNNN", "**** NNNN" o
-  "tarjeta NNNN" en asunto o cuerpo. Nullable (transferencias no traen).
-- Si faltan comercio, monto o fecha, el parser devuelve `null` y el sync
-  registra el error sin insertar (correos no transaccionales se ignoran así).
+1. **"Pago de servicio realizado"** → gasto (pago de una factura).
+   Campos: "Monto total pagado", "Fecha y hora" (`02 julio 2026 / 10:57 a. m.`),
+   "Servicio" (usado como `merchant`), "Forma de pago" (`Visa *3326` → últimos
+   4 dígitos).
+2. **"Retiro con Código CASH exitoso"** → gasto (retiro en cajero).
+   Campos: "Monto", "Fecha" (`18 de jun 2026`, sin hora). `merchant` fijo:
+   "Retiro Código CASH". Sin tarjeta.
+3. **Cuerpo con "Has recibido RD$…"** (asunto tipo "💵 Te han enviado un
+   Toke") → ingreso (transferencia P2P). Campos: "Monto", "Fecha" (sin
+   hora), "Realizado por" (usado como `merchant`).
+
+Otros correos del banco — código CASH creado/vencido, estados de cuenta,
+recordatorio de fecha de pago — **no representan un movimiento de dinero**.
+`isIgnorableQikEmail()` los reconoce por el asunto para que el sync los
+descarte en silencio en vez de reportarlos como error de parseo (son la
+mayoría del volumen real: ~65% de los correos de Qik son de este tipo).
+
+- **Fecha**: dos formatos en español, ambos en AST (UTC-4 fijo, RD no tiene
+  horario de verano) — con hora (`DD monthname YYYY / HH:MM a.m./p.m.`) o
+  sin hora (`DD de mon YYYY`, mes abreviado). Sin hora explícita se usa
+  mediodía para no cruzar el límite del día al convertir a UTC.
+- Si el asunto no coincide con ninguno de los 3 tipos transaccionales, o le
+  faltan campos mínimos, el parser devuelve `null`. El sync solo lo reporta
+  como error si `isIgnorableQikEmail()` tampoco lo reconoce como ruido
+  esperado.
 - Duplicados: `gmail_message_id` es UNIQUE; el sync filtra los existentes
   antes de insertar y tolera la carrera entre dos syncs simultáneos
   (error 23505).
 
-Tests: `src/lib/qik-parser.test.ts` (27 casos). **Si Qik cambia el formato
-de sus correos, actualiza el parser y añade el correo real como caso de test.**
+Tests: `src/lib/qik-parser.test.ts`, con fixtures HTML tomados de correos
+reales (nombre/cédula ya enmascarados por el propio Qik). **Si Qik agrega
+un tipo de correo nuevo (p. ej. "Toke enviado" o compras con tarjeta si
+algún día las manda por correo), añade el correo real como caso de test y
+un nuevo builder en `qik-parser.ts` — no adivines el formato.**
 
 ## Variables de entorno
 

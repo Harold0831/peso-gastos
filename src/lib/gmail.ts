@@ -6,7 +6,12 @@ import "server-only";
  * refresh token OAuth2 de larga vida — ver CLAUDE.md para obtenerlo.
  */
 
-const QIK_SENDER = "ayuda@qik.com.do";
+// El remitente real de las notificaciones transaccionales es
+// no-reply-qik@qik.com.do. ayuda@qik.com.do es solo la dirección de
+// soporte que Qik menciona en el pie de página de sus correos — nunca
+// envía nada desde ahí. Las promociones vienen de promociones@mail.qik.com.do
+// y quedan excluidas automáticamente al filtrar por este remitente exacto.
+const QIK_SENDER = "no-reply-qik@qik.com.do";
 
 export interface GmailMessage {
   id: string;

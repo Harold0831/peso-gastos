@@ -1,6 +1,6 @@
 import "server-only";
 import { fetchQikEmails } from "./gmail";
-import { parseQikEmail } from "./qik-parser";
+import { isIgnorableQikEmail, parseQikEmail } from "./qik-parser";
 import { suggestCategory } from "./gemini";
 import { getSupabaseAdmin } from "./supabase";
 
@@ -46,7 +46,11 @@ export async function runSync(): Promise<SyncResult> {
   for (const email of newEmails) {
     const parsed = parseQikEmail(email.subject, email.body);
     if (!parsed) {
-      errors.push(`No se pudo parsear el correo ${email.id} ("${email.subject}")`);
+      // Estados de cuenta, códigos CASH creados/vencidos, etc.: no son
+      // transacciones y no representan un error de parseo.
+      if (!isIgnorableQikEmail(email.subject)) {
+        errors.push(`No se pudo parsear el correo ${email.id} ("${email.subject}")`);
+      }
       continue;
     }
 
