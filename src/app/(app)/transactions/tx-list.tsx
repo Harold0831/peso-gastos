@@ -67,8 +67,8 @@ export function TxList({
       } else {
         setSyncMessage(
           result.synced === 0
-            ? "Sin correos nuevos"
-            : `${result.synced} ${result.synced === 1 ? "transacción importada" : "transacciones importadas"}`,
+            ? "Sin transacciones nuevas"
+            : `${result.synced} ${result.synced === 1 ? "nueva transacción" : "nuevas transacciones"}`,
         );
         router.refresh();
       }

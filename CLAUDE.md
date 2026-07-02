@@ -38,7 +38,7 @@ src/
 │   │   └── goals/           # 6. Metas de ahorro con abonos
 │   └── api/
 │       ├── auth/            # register/login options+verify, logout (WebAuthn)
-│       └── sync/            # GET protegido con Bearer CRON_SECRET
+│       └── sync/            # GET protegido con Bearer SYNC_SECRET
 ├── lib/
 │   ├── data.ts              # Lecturas (Supabase o mock si no hay env)
 │   ├── actions.ts           # Server actions de mutación (confirmar, crear…)
@@ -64,9 +64,11 @@ design/                      # Referencias visuales (no es código de la app)
   role key. Todas las páginas son `force-dynamic` (datos cambian a cada sync).
 - **Mutaciones**: client components → server actions (`lib/actions.ts`) →
   validación Zod → Supabase → `revalidatePath`.
-- **Sync**: cron de Vercel cada 5 min → `GET /api/sync` (Bearer CRON_SECRET)
-  → `runSync()`. También manual desde el botón refresh y pull-to-refresh
-  de /transactions (server action `syncNow`).
+- **Sync**: manual, desde el botón "Sincronizar" (ícono refresh) y el
+  pull-to-refresh de /transactions → server action `syncNow` → `runSync()`.
+  El botón muestra spinner, se deshabilita mientras carga y reporta
+  "X nuevas transacciones" o el error. También existe `GET /api/sync`
+  (Bearer SYNC_SECRET) para dispararlo desde fuera (curl, atajos de iOS…).
 
 ## Parser de correos Qik
 
@@ -91,7 +93,8 @@ Balance Disponible: RD$ 48,210.35
 - Si faltan comercio, monto o fecha, el parser devuelve `null` y el sync
   registra el error sin insertar (correos no transaccionales se ignoran así).
 - Duplicados: `gmail_message_id` es UNIQUE; el sync filtra los existentes
-  antes de insertar y tolera la carrera entre dos crons (error 23505).
+  antes de insertar y tolera la carrera entre dos syncs simultáneos
+  (error 23505).
 
 Tests: `src/lib/qik-parser.test.ts` (27 casos). **Si Qik cambia el formato
 de sus correos, actualiza el parser y añade el correo real como caso de test.**
@@ -110,7 +113,7 @@ Project Settings → Environment Variables.
 | `GMAIL_REFRESH_TOKEN` | Token de larga vida | OAuth Playground (abajo) |
 | `GOOGLE_USER_EMAIL` | Cuenta Gmail que recibe los correos de Qik | harold3112@gmail.com |
 | `GEMINI_API_KEY` | API key de Gemini | https://aistudio.google.com/apikey |
-| `CRON_SECRET` | Protege /api/sync; Vercel lo envía como Bearer | `openssl rand -hex 32` |
+| `SYNC_SECRET` | Protege /api/sync para llamadas externas | `openssl rand -hex 32` |
 | `SESSION_SECRET` | Firma la cookie JWT de sesión | `openssl rand -base64 32` |
 
 ## Configurar Gmail API (OAuth2)
@@ -178,10 +181,12 @@ En su lugar:
   app de un usuario, sin acceso directo desde el browser a Supabase.
 - **Datos mock automáticos** sin env vars: permite desarrollo de UI y QA
   visual sin credenciales.
-- **Cron cada 5 min requiere plan Pro de Vercel.** En plan Hobby los crons
-  solo pueden ser diarios — cambia el schedule en `vercel.json` a
-  `0 8 * * *` o usa un pinger externo (cron-job.org) llamando
-  `GET /api/sync` con el header `Authorization: Bearer <CRON_SECRET>`.
+- **Sync manual, sin cron.** El sync se dispara solo desde el botón de
+  /transactions (o el pull-to-refresh). Se descartó el cron de Vercel:
+  cada 5 min requiere plan Pro y para un solo usuario sincronizar al abrir
+  la app es suficiente. Si algún día quieres automatizarlo, `GET /api/sync`
+  con `Authorization: Bearer <SYNC_SECRET>` sigue disponible para un
+  scheduler externo.
 - **PWA a mano** (manifest + sw.js simple) en vez de next-pwa/serwist:
   la app es dinámica, un SW network-first basta para instalabilidad iOS.
 - **Montos**: siempre `RD$ X,XXX.XX` vía `formatMoney` (`src/lib/format.ts`).
@@ -191,6 +196,5 @@ En su lugar:
 
 1. `vercel` (o conecta el repo en el dashboard). Framework: Next.js.
 2. Configura todas las env vars (Production).
-3. El cron queda registrado desde `vercel.json` al desplegar.
-4. QA en iPhone: abre el dominio en Safari → Compartir → *Agregar a inicio*.
+3. QA en iPhone: abre el dominio en Safari → Compartir → *Agregar a inicio*.
    Verifica Face ID en el login, instalación standalone y safe areas.

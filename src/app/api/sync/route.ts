@@ -5,11 +5,13 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 export const maxDuration = 60;
 
 /**
- * Endpoint del cron de Vercel (cada 5 minutos, ver vercel.json).
- * Vercel envía automáticamente "Authorization: Bearer $CRON_SECRET".
+ * Endpoint de sincronización para llamadas externas (curl, atajos de iOS…).
+ * Requiere "Authorization: Bearer $SYNC_SECRET". El botón "Sincronizar" de
+ * /transactions usa la server action syncNow(), que ejecuta el mismo
+ * runSync() sin exponer el secreto al cliente.
  */
 export async function GET(request: NextRequest) {
-  const secret = process.env.CRON_SECRET;
+  const secret = process.env.SYNC_SECRET;
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }

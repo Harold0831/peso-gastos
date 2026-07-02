@@ -72,7 +72,7 @@ export async function runSync(): Promise<SyncResult> {
     });
 
     if (insertError) {
-      // 23505 = unique_violation: otra ejecución del cron lo insertó primero
+      // 23505 = unique_violation: otro sync simultáneo lo insertó primero
       if (insertError.code !== "23505") {
         errors.push(`Error insertando ${email.id}: ${insertError.message}`);
       }

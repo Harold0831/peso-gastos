@@ -3,7 +3,7 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
 /**
  * Protege todas las rutas excepto /login, las rutas de auth, /api/sync
- * (protegida por su propio Bearer CRON_SECRET) y los assets de la PWA.
+ * (protegida por su propio Bearer SYNC_SECRET) y los assets de la PWA.
  *
  * En dev sin Supabase configurado se deja pasar todo: no hay dónde guardar
  * credenciales de passkey, así que la app corre abierta con datos mock.
