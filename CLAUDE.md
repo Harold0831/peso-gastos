@@ -57,8 +57,11 @@ src/
 │   ├── gemini.ts             # Categorización con gemini-2.0-flash
 │   ├── supabase.ts           # Cliente admin (service role, solo servidor)
 │   ├── session.ts            # JWT de sesión con jose (corre en edge)
-│   └── webauthn.ts           # Credenciales passkey en Supabase
-├── components/                # BottomNav, TxRow, Donut, PullToRefresh, Skeleton…
+│   ├── webauthn.ts           # Credenciales passkey en Supabase
+│   ├── webauthn-client.ts    # verifyPasskey() — /login y AppLockGate lo comparten
+│   └── app-lock.ts           # Umbral de re-bloqueo (sessionStorage)
+├── components/                # BottomNav, TxRow, Donut, PullToRefresh, Skeleton,
+│                               # AppLockGate + LockScreen (re-bloqueo con Face ID)
 supabase/
 ├── migrations/0001_init.sql # Tablas + RLS
 └── seed.sql                 # Categorías por defecto
@@ -257,6 +260,33 @@ En su lugar:
   request, así que funciona igual en localhost y en el dominio de Vercel —
   pero los passkeys registrados en un dominio no sirven en otro.
 - En iPhone Safari, el flujo dispara Face ID automáticamente.
+
+### Re-bloqueo automático (app lock)
+
+La cookie de sesión dura 30 días — sin esto, Face ID solo se pediría una
+vez y la PWA quedaría desbloqueada indefinidamente. `AppLockGate`
+(`src/components/app-lock-gate.tsx`) añade una capa encima, puramente en
+el cliente, que vuelve a pedir el passkey:
+
+- Siempre que la PWA se abre desde cero (proceso matado por iOS y
+  reabierto — el estado de React no sobrevive eso).
+- Al volver de segundo plano si pasaron más de 30s desde la última vez que
+  se verificó (`INACTIVITY_THRESHOLD_MS` en `src/lib/app-lock.ts`).
+
+Mecanismo: `sessionStorage["peso-last-auth"]` guarda cuándo fue la última
+verificación exitosa. `useLayoutEffect` lo revisa en el montaje (evita el
+flash de contenido sin bloquear que daría un `useEffect` normal) y en cada
+evento `visibilitychange`. El overlay de bloqueo (`LockScreen`) reusa el
+mismo flujo WebAuthn que `/login` (`verifyPasskey()` en
+`src/lib/webauthn-client.ts`) — la re-verificación también refresca el JWT
+de sesión, así que renueva los 30 días sin fricción extra.
+
+`AppLockGate` recibe `enabled={isSupabaseConfigured()}` desde el layout
+server-side de `(app)`: en modo demo (sin Supabase) no hay passkeys que
+verificar, así que nunca bloquea. `sessionStorage` (no `localStorage`) es
+intencional: se limpia solo cuando el proceso muere, que es justo la señal
+de "cerraron la PWA de verdad" que activa el bloqueo por el `useState(false)`
+inicial del gate.
 
 ## Decisiones técnicas
 

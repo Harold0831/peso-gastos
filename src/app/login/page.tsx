@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
+import { startRegistration } from "@simplewebauthn/browser";
+import { verifyPasskey } from "@/lib/webauthn-client";
+import { markAuthenticated } from "@/lib/app-lock";
 
 type Status = "idle" | "working" | "error";
 
@@ -15,27 +17,17 @@ export default function LoginPage() {
     setStatus("working");
     setMessage(null);
     try {
-      const optionsRes = await fetch("/api/auth/login/options", { method: "POST" });
-
-      if (optionsRes.status === 404) {
-        // Primer uso: no hay passkeys registrados todavía → crear uno.
-        await register();
-        return;
+      const result = await verifyPasskey();
+      if (!result.ok) {
+        if (result.noCredentials) {
+          // Primer uso: no hay passkeys registrados todavía → crear uno.
+          await register();
+          return;
+        }
+        throw new Error(result.error);
       }
-      if (!optionsRes.ok) throw new Error("No se pudieron obtener las opciones de login");
 
-      const optionsJSON = await optionsRes.json();
-      const assertion = await startAuthentication({ optionsJSON });
-
-      const verifyRes = await fetch("/api/auth/login/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(assertion),
-      });
-      if (!verifyRes.ok) {
-        const body = await verifyRes.json().catch(() => null);
-        throw new Error(body?.error ?? "Verificación fallida");
-      }
+      markAuthenticated();
       router.replace("/");
       router.refresh();
     } catch (err) {
@@ -60,6 +52,7 @@ export default function LoginPage() {
       const body = await verifyRes.json().catch(() => null);
       throw new Error(body?.error ?? "No se pudo registrar el passkey");
     }
+    markAuthenticated();
     router.replace("/");
     router.refresh();
   }
