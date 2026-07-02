@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f5f5f7;
+  --surface: #ffffff;
+  --card: #ffffff;
+  --text-primary: #1a1a2e;
+  --text-secondary: #6b7280;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --income: #16a34a;
+  --expense: #dc2626;
+  --warning: #d97706;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.dark {
+  --background: #0f0f0f;
+  --surface: #1a1a1a;
+  --card: #222222;
+  --text-primary: #f5f5f7;
+  --text-secondary: #8b8b92;
+  --border: #2a2a2a;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-ink: var(--text-primary);
+  --color-ink-muted: var(--text-secondary);
+  --color-line: var(--border);
+  --color-accent: var(--accent);
+  --color-income: var(--income);
+  --color-expense: var(--expense);
+  --color-warning: var(--warning);
+  --font-sans: var(--font-inter), -apple-system, system-ui, sans-serif;
+  --shadow-card: var(--shadow-card);
+  --radius-card: 16px;
+  --radius-btn: 12px;
+  --radius-pill: 999px;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--text-primary);
+  font-family:
+    var(--font-inter),
+    -apple-system,
+    system-ui,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
+}
+
+/* Safe area de iPhone para la bottom nav y contenido */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Oculta scrollbars en carruseles horizontales (pills de categorías) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Transición sutil entre pantallas */
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-screen-in {
+  animation: screen-in 220ms ease-out;
+}
+
+/* Celebración de meta completada */
+@keyframes goal-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-goal-pop {
+  animation: goal-pop 600ms ease-in-out;
+}

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Floww — PWA</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; font-family: 'Inter', -apple-system, system-ui, sans-serif; background: #1a1a1a; }
+  * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+  button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 0; height: 0; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="screens.jsx"></script>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "darkMode": false,
+  "accent": "#2563EB"
+}/*EDITMODE-END*/;
+
+const LIGHT = (accent) => ({
+  bg: '#F5F5F7', surface: '#FFFFFF', text: '#1A1A2E', textSec: '#6B7280',
+  border: '#E5E7EB', accent, income: '#16A34A', expense: '#DC2626',
+  shadow: '0 1px 3px rgba(0,0,0,0.06)',
+});
+const DARK = (accent) => ({
+  bg: '#0F0F0F', surface: '#1A1A1A', text: '#F5F5F7', textSec: '#8B8B92',
+  border: '#2A2A2A', accent, income: '#16A34A', expense: '#DC2626',
+  shadow: '0 1px 3px rgba(0,0,0,0.4)',
+});
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const theme = t.darkMode ? DARK(t.accent) : LIGHT(t.accent);
+
+  const [screen, setScreen] = useState('home');
+  const [pickedTx, setPickedTx] = useState(null);
+  const [history, setHistory] = useState(['home']);
+
+  const navigate = (s) => {
+    if (s === 'add') {
+      // route to first pending tx for confirm flow
+      const pending = TX.find(x => x.pending) || TX[0];
+      setPickedTx(pending);
+      setScreen('detail');
+      setHistory(h => [...h, 'detail']);
+      return;
+    }
+    setScreen(s);
+    setHistory(h => [...h, s]);
+  };
+
+  const pickTx = (tx) => {
+    setPickedTx(tx);
+    setScreen('detail');
+    setHistory(h => [...h, 'detail']);
+  };
+
+  const back = () => {
+    setHistory(h => {
+      const nh = h.slice(0, -1);
+      const prev = nh[nh.length - 1] || 'home';
+      setScreen(prev);
+      return nh;
+    });
+  };
+
+  const navMap = { detail: history[history.length - 2] || 'home' };
+  const activeNav = screen === 'detail' ? navMap.detail : screen;
+
+  return (
+    <div style={{ width: '100%', height: '100vh', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      <IOSDevice width={390} height={844} dark={t.darkMode}>
+        <div data-screen-label={`Floww · ${screen}`} style={{
+          position: 'absolute', inset: 0,
+          background: theme.bg, color: theme.text,
+          fontFamily: "'Inter', -apple-system, sans-serif",
+          paddingTop: 56,
+          overflowY: 'auto', overflowX: 'hidden',
+        }}>
+          {screen === 'home' && <HomeScreen theme={theme} onNav={navigate} onPickTx={pickTx}/>}
+          {screen === 'tx' && <TxScreen theme={theme} onPickTx={pickTx}/>}
+          {screen === 'detail' && pickedTx && <DetailScreen tx={pickedTx} theme={theme} onBack={back}/>}
+          {screen === 'charts' && <ChartsScreen theme={theme}/>}
+          {screen === 'budget' && <BudgetScreen theme={theme}/>}
+        </div>
+        <BottomNav active={activeNav} onNav={navigate} theme={theme}/>
+      </IOSDevice>
+
+      <TweaksPanel>
+        <TweakSection title="Tema">
+          <TweakToggle label="Modo oscuro" value={t.darkMode} onChange={v => setTweak('darkMode', v)}/>
+          <TweakColor label="Acento" value={t.accent} options={['#2563EB', '#0F766E', '#7C3AED', '#DB2777']} onChange={v => setTweak('accent', v)}/>
+        </TweakSection>
+      </TweaksPanel>
+    </div>
+  );
+}
+
+// Render after all babel scripts compiled
+function mount() {
+  if (!window.IOSDevice || !window.HomeScreen || !window.useTweaks) {
+    return setTimeout(mount, 50);
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+}
+mount();
+</script>
+</body>
+</html>
