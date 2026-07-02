@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { ChartIcon, HomeIcon, ListIcon, PlusIcon, TargetIcon } from "./icons";
 
@@ -10,6 +10,25 @@ const items = [
   { href: "/charts", label: "Gráficas", icon: ChartIcon },
   { href: "/goals", label: "Metas", icon: TargetIcon },
 ] as const;
+
+/** Opacidad reducida mientras Next resuelve la navegación — feedback inmediato al tocar. */
+function NavLinkContent({
+  icon: Icon,
+  label,
+}: {
+  icon: (typeof items)[number]["icon"];
+  label: string;
+}) {
+  const { pending } = useLinkStatus();
+  return (
+    <span
+      className={`flex flex-col items-center gap-[3px] transition-opacity ${pending ? "opacity-40" : ""}`}
+    >
+      <Icon />
+      <span className="text-[10px] font-medium tracking-tight">{label}</span>
+    </span>
+  );
+}
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -23,12 +42,11 @@ export function BottomNav() {
     <Link
       key={href}
       href={href}
-      className={`flex w-[64px] flex-col items-center gap-[3px] px-1 py-1 ${
+      className={`flex w-[64px] flex-col items-center px-1 py-1 ${
         isActive(href) ? "text-accent" : "text-ink-muted"
       }`}
     >
-      <Icon />
-      <span className="text-[10px] font-medium tracking-tight">{label}</span>
+      <NavLinkContent icon={Icon} label={label} />
     </Link>
   );
 

@@ -24,33 +24,41 @@ Con Supabase configurado, el middleware exige sesión por passkey.
 
 ```
 src/
-├── middleware.ts            # Protege todo excepto /login, /api/auth, /api/sync
+├── middleware.ts             # Protege todo excepto /login, /api/auth, /api/sync, /api/gmail-*
 ├── app/
-│   ├── layout.tsx           # Fuente Inter, meta PWA, theme script
-│   ├── manifest.ts          # Web manifest (→ /manifest.webmanifest)
-│   ├── login/               # Login con passkey (WebAuthn)
-│   ├── (app)/               # Shell con BottomNav — pantallas principales
-│   │   ├── page.tsx         # 1. Dashboard: balance, pills, donut, recientes
-│   │   ├── transactions/    # 2. Lista con filtros + 3. detalle/confirmar
-│   │   │   └── new/         #    Alta manual (FAB central) — RHF + Zod
-│   │   ├── charts/          # 4. Gráficas (Recharts) con selector de mes
-│   │   ├── budget/          # 5. Presupuestos por categoría
-│   │   └── goals/           # 6. Metas de ahorro con abonos
+│   ├── layout.tsx            # Fuente Inter, meta PWA, theme script
+│   ├── manifest.ts           # Web manifest (→ /manifest.webmanifest)
+│   ├── login/                # Login con passkey (WebAuthn)
+│   ├── (app)/                # Shell con BottomNav — pantallas principales
+│   │   ├── page.tsx          # 1. Dashboard: balance, pills, donut, recientes
+│   │   ├── loading.tsx       #    Skeleton — una por pantalla, ver abajo
+│   │   ├── transactions/     # 2. Lista con filtros + 3. detalle/confirmar
+│   │   │   ├── loading.tsx
+│   │   │   └── new/          #    Alta manual (FAB central) — RHF + Zod
+│   │   ├── charts/           # 4. Gráficas (Recharts) con selector de mes
+│   │   │   └── loading.tsx
+│   │   ├── budget/           # 5. Presupuestos por categoría
+│   │   │   └── loading.tsx
+│   │   └── goals/            # 6. Metas de ahorro con abonos
+│   │       └── loading.tsx
 │   └── api/
-│       ├── auth/            # register/login options+verify, logout (WebAuthn)
-│       └── sync/            # GET protegido con Bearer SYNC_SECRET
+│       ├── auth/              # register/login options+verify, logout (WebAuthn)
+│       ├── sync/               # GET protegido con Bearer SYNC_SECRET (sync manual)
+│       ├── gmail-webhook/      # POST — recibe push de Gmail, dispara runSync()
+│       └── gmail-watch/renew/  # GET protegido con Bearer CRON_SECRET (cron diario)
 ├── lib/
-│   ├── data.ts              # Lecturas (Supabase o mock si no hay env)
-│   ├── actions.ts           # Server actions de mutación (confirmar, crear…)
-│   ├── schemas.ts           # Schemas Zod compartidos
-│   ├── sync.ts              # Pipeline Gmail → parser → Gemini → Supabase
-│   ├── qik-parser.ts        # Parser de correos Qik (puro, con tests)
-│   ├── gmail.ts             # Cliente Gmail REST (fetch + refresh token)
-│   ├── gemini.ts            # Categorización con gemini-2.0-flash
-│   ├── supabase.ts          # Cliente admin (service role, solo servidor)
-│   ├── session.ts           # JWT de sesión con jose (corre en edge)
-│   └── webauthn.ts          # Credenciales passkey en Supabase
-├── components/              # BottomNav, TxRow, Donut, PullToRefresh…
+│   ├── data.ts             # Lecturas (Supabase o mock si no hay env)
+│   ├── actions.ts          # Server actions de mutación (confirmar, crear…)
+│   ├── schemas.ts          # Schemas Zod compartidos
+│   ├── sync.ts             # Pipeline Gmail → parser → Gemini → Supabase
+│   ├── qik-parser.ts       # Parser de correos Qik (puro, con tests)
+│   ├── gmail.ts             # Cliente Gmail REST (fetch + refresh token + watch)
+│   ├── gmail-webhook.ts     # Verificación del JWT de Pub/Sub push
+│   ├── gemini.ts             # Categorización con gemini-2.0-flash
+│   ├── supabase.ts           # Cliente admin (service role, solo servidor)
+│   ├── session.ts            # JWT de sesión con jose (corre en edge)
+│   └── webauthn.ts           # Credenciales passkey en Supabase
+├── components/                # BottomNav, TxRow, Donut, PullToRefresh, Skeleton…
 supabase/
 ├── migrations/0001_init.sql # Tablas + RLS
 └── seed.sql                 # Categorías por defecto
@@ -62,13 +70,23 @@ design/                      # Referencias visuales (no es código de la app)
 
 - **Lecturas**: server components → `lib/data.ts` → Supabase con service
   role key. Todas las páginas son `force-dynamic` (datos cambian a cada sync).
+  Cada ruta tiene su `loading.tsx` (skeleton) — Next.js lo muestra
+  automáticamente vía Suspense mientras el server component espera a
+  Supabase, así que cambiar de pestaña siempre da feedback visual
+  inmediato en vez de quedarse "congelado" unos segundos.
 - **Mutaciones**: client components → server actions (`lib/actions.ts`) →
   validación Zod → Supabase → `revalidatePath`.
-- **Sync**: manual, desde el botón "Sincronizar" (ícono refresh) y el
+- **Sync automático**: Gmail Push (Cloud Pub/Sub) notifica a
+  `POST /api/gmail-webhook` en cuanto llega un correo nuevo → `runSync()`.
+  La suscripción (`watchGmailMailbox`) expira a los 7 días máximo; se
+  renueva sola 1x/día vía el cron de `vercel.json` (`GET
+  /api/gmail-watch/renew`, Bearer `CRON_SECRET`). Ver § Gmail Push abajo
+  para la configuración (requiere pasos manuales en Google Cloud Console).
+- **Sync manual (fallback)**: botón "Sincronizar" (ícono refresh) y
   pull-to-refresh de /transactions → server action `syncNow` → `runSync()`.
-  El botón muestra spinner, se deshabilita mientras carga y reporta
-  "X nuevas transacciones" o el error. También existe `GET /api/sync`
-  (Bearer SYNC_SECRET) para dispararlo desde fuera (curl, atajos de iOS…).
+  Útil si el webhook falla o mientras configuras Gmail Push por primera
+  vez. También existe `GET /api/sync` (Bearer `SYNC_SECRET`) para
+  dispararlo desde fuera (curl, atajos de iOS…).
 
 ## Parser de correos Qik
 
@@ -131,8 +149,11 @@ Project Settings → Environment Variables.
 | `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` | OAuth2 client | Google Cloud Console (abajo) |
 | `GMAIL_REFRESH_TOKEN` | Token de larga vida | OAuth Playground (abajo) |
 | `GOOGLE_USER_EMAIL` | Cuenta Gmail que recibe los correos de Qik | harold3112@gmail.com |
+| `GMAIL_PUBSUB_TOPIC` | Tópico de Cloud Pub/Sub para Gmail Push | Google Cloud Console (§ Gmail Push) |
+| `GMAIL_WEBHOOK_AUDIENCE` | URL pública de /api/gmail-webhook, valida el JWT de Pub/Sub | Tu dominio de Vercel |
 | `GEMINI_API_KEY` | API key de Gemini | https://aistudio.google.com/apikey |
-| `SYNC_SECRET` | Protege /api/sync para llamadas externas | `openssl rand -hex 32` |
+| `SYNC_SECRET` | Protege /api/sync (llamadas externas manuales) | `openssl rand -hex 32` |
+| `CRON_SECRET` | Protege /api/gmail-watch/renew — **debe llamarse así**, Vercel lo inyecta automáticamente en sus crons | `openssl rand -hex 32` |
 | `SESSION_SECRET` | Firma la cookie JWT de sesión | `openssl rand -base64 32` |
 
 ## Configurar Gmail API (OAuth2)
@@ -157,6 +178,54 @@ Project Settings → Environment Variables.
 > expiran a los 7 días **salvo** que publiques la app (Publishing status →
 > In production). Publícala aunque no la verifiques: para gmail.readonly con
 > tu propia cuenta funciona y el token no expira.
+
+## Configurar Gmail Push (sync automático en tiempo real)
+
+Gmail no llama directamente a tu app — te avisa a través de un tópico de
+**Cloud Pub/Sub**. El flujo completo: Gmail detecta un correo nuevo → publica
+en el tópico → Pub/Sub hace `POST` a `/api/gmail-webhook` → la app llama a
+`runSync()`. Esto es opcional: sin configurarlo, el sync manual (botón /
+pull-to-refresh / `GET /api/sync`) sigue funcionando exactamente igual.
+
+Todo esto se configura una sola vez, en el mismo proyecto de Google Cloud
+que ya creaste para Gmail API:
+
+1. **Habilita Cloud Pub/Sub API**: Google Cloud Console → APIs & Services →
+   Library → busca "Cloud Pub/Sub API" → Enable.
+2. **Crea un tópico**: Pub/Sub → Topics → Create Topic. ID sugerido:
+   `qik-sync`. Copia el nombre completo, algo como
+   `projects/peso-123456/topics/qik-sync` → eso es `GMAIL_PUBSUB_TOPIC`.
+3. **Dale permiso a Gmail para publicar**: en el tópico → Permissions → Add
+   principal → `gmail-api-push@system.gserviceaccount.com` → rol
+   **Pub/Sub Publisher**. Sin este paso Gmail no puede notificar al tópico
+   (falla en silencio, no da error visible).
+4. **Crea la suscripción push**: Pub/Sub → el tópico → Create Subscription.
+   - Delivery type: **Push**.
+   - Endpoint URL: `https://tu-dominio.vercel.app/api/gmail-webhook`
+     (el dominio real de tu deploy en Vercel).
+   - Marca **"Enable authentication"** → Service account: puedes crear uno
+     nuevo (IAM → Service Accounts → Create) o reusar uno existente con
+     permiso mínimo. Audience: pon la misma URL del endpoint — ese valor
+     exacto va en `GMAIL_WEBHOOK_AUDIENCE`.
+   - Ack deadline: súbelo a 60s (el default de 10s puede ser justo si hay
+     varios correos nuevos a la vez).
+5. **Despliega la app** con `GMAIL_PUBSUB_TOPIC`, `GMAIL_WEBHOOK_AUDIENCE`
+   y `CRON_SECRET` configurados en Vercel (Production).
+6. **Activa la suscripción por primera vez**: llama una vez a
+   ```
+   curl https://tu-dominio.vercel.app/api/gmail-watch/renew \
+     -H "Authorization: Bearer <CRON_SECRET>"
+   ```
+   Esto ejecuta `users.watch()` y arranca el monitoreo. A partir de ahí, el
+   cron diario (`vercel.json`, 6am) lo renueva solo antes de que expire
+   (máximo 7 días).
+
+**Cómo depurar si no llegan notificaciones**: revisa Pub/Sub → tu tópico →
+pestaña "Subscriptions" → busca métricas de mensajes entregados/fallidos.
+Un 401 en los logs de `/api/gmail-webhook` casi siempre es
+`GMAIL_WEBHOOK_AUDIENCE` mal configurado (debe ser idéntico, carácter por
+carácter, al "Audience" que pusiste en la suscripción). El sync manual
+sigue disponible como red de respaldo mientras depuras esto.
 
 ## Configurar Supabase
 
@@ -200,12 +269,20 @@ En su lugar:
   app de un usuario, sin acceso directo desde el browser a Supabase.
 - **Datos mock automáticos** sin env vars: permite desarrollo de UI y QA
   visual sin credenciales.
-- **Sync manual, sin cron.** El sync se dispara solo desde el botón de
-  /transactions (o el pull-to-refresh). Se descartó el cron de Vercel:
-  cada 5 min requiere plan Pro y para un solo usuario sincronizar al abrir
-  la app es suficiente. Si algún día quieres automatizarlo, `GET /api/sync`
-  con `Authorization: Bearer <SYNC_SECRET>` sigue disponible para un
-  scheduler externo.
+- **Gmail Push en vez de polling.** Un cron de Vercel cada pocos minutos
+  requiere plan Pro; sondear Gmail a cada rato además desperdicia quota de
+  API para una sola cuenta. Gmail Push (Cloud Pub/Sub) notifica en
+  segundos y el único cron que corre es 1x/día (gratis en Hobby) para
+  renovar la suscripción. El costo es configuración manual en Google
+  Cloud Console (topic + IAM + subscription) — ver § Gmail Push. El sync
+  manual (botón, pull-to-refresh, `GET /api/sync`) queda como respaldo si
+  el webhook falla o mientras configuras todo por primera vez.
+- **`loading.tsx` por ruta en vez de spinners manuales.** Next.js App
+  Router activa el archivo `loading.tsx` de cada segmento automáticamente
+  vía Suspense mientras el server component espera datos — no hay que
+  encablar estado de carga a mano en cada pantalla. `useLinkStatus()` en
+  `BottomNav` da feedback aún más inmediato (opacidad reducida en el ícono
+  tocado) para el instante entre el tap y que aparezca el skeleton.
 - **PWA a mano** (manifest + sw.js simple) en vez de next-pwa/serwist:
   la app es dinámica, un SW network-first basta para instalabilidad iOS.
 - **Montos**: siempre `RD$ X,XXX.XX` vía `formatMoney` (`src/lib/format.ts`).
@@ -214,6 +291,9 @@ En su lugar:
 ## Deploy en Vercel
 
 1. `vercel` (o conecta el repo en el dashboard). Framework: Next.js.
-2. Configura todas las env vars (Production).
-3. QA en iPhone: abre el dominio en Safari → Compartir → *Agregar a inicio*.
+2. Configura todas las env vars (Production), incluido `CRON_SECRET` si
+   quieres que el cron de renovación de Gmail Push funcione.
+3. Si vas a usar Gmail Push, sigue § Gmail Push arriba **después** del
+   primer deploy (necesitas la URL real de producción para el webhook).
+4. QA en iPhone: abre el dominio en Safari → Compartir → *Agregar a inicio*.
    Verifica Face ID en el login, instalación standalone y safe areas.

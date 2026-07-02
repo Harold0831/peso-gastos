@@ -55,6 +55,21 @@ async function gmailFetch<T>(path: string, accessToken: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function gmailPost<T>(path: string, accessToken: string, body: unknown): Promise<T> {
+  const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`Gmail API ${path} falló (${res.status}): ${await res.text()}`);
+  }
+  return res.json() as Promise<T>;
+}
+
 function decodeBase64Url(data: string): string {
   return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8");
 }
@@ -115,4 +130,21 @@ export async function fetchQikEmails(newerThanDays = 7): Promise<GmailMessage[]>
     }),
   );
   return messages;
+}
+
+/**
+ * Activa las notificaciones push de Gmail: le pide a Google que publique en
+ * `topicName` (un tópico de Cloud Pub/Sub) cada vez que cambia el inbox.
+ * La suscripción expira a los 7 días máximo — hay que renovarla antes con
+ * `POST /api/gmail-watch/renew` (ver vercel.json, cron diario).
+ */
+export async function watchGmailMailbox(
+  topicName: string,
+): Promise<{ historyId: string; expiration: string }> {
+  const accessToken = await getAccessToken();
+  return gmailPost("/watch", accessToken, {
+    topicName,
+    labelIds: ["INBOX"],
+    labelFilterAction: "include",
+  });
 }
