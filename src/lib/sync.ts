@@ -11,17 +11,24 @@ export interface SyncResult {
 
 /**
  * Pipeline de sincronización:
- *  1. Trae correos recientes de ayuda@qik.com.do
+ *  1. Trae correos recientes de los remitentes de Qik (ver gmail.ts)
  *  2. Descarta los que ya existen (gmail_message_id único)
  *  3. Parsea cada correo nuevo con regex
- *  4. Pide sugerencia de categoría a Gemini (falla suave → sin sugerencia)
- *  5. Inserta con confirmed=false
+ *  4. Descarta si ya existe una transacción con mismo monto/fecha/tipo
+ *     (Qik notifica algunos movimientos por dos correos distintos)
+ *  5. Pide sugerencia de categoría a Gemini (falla suave → sin sugerencia)
+ *  6. Inserta con confirmed=false
+ *
+ * `newerThanDays` normalmente no hace falta pasarlo (default 7, suficiente
+ * para el uso diario). Sirve para un backfill puntual — p. ej. tras
+ * corregir un bug de parseo o agregar soporte para un remitente que no se
+ * estaba filtrando — llamando /api/sync?days=365 una sola vez.
  */
-export async function runSync(): Promise<SyncResult> {
+export async function runSync(newerThanDays?: number): Promise<SyncResult> {
   const supabase = getSupabaseAdmin();
   const errors: string[] = [];
 
-  const emails = await fetchQikEmails();
+  const emails = await fetchQikEmails(newerThanDays);
   if (emails.length === 0) return { synced: 0, errors };
 
   const { data: existing, error: existingError } = await supabase
@@ -48,11 +55,26 @@ export async function runSync(): Promise<SyncResult> {
     if (!parsed) {
       // Estados de cuenta, códigos CASH creados/vencidos, etc.: no son
       // transacciones y no representan un error de parseo.
-      if (!isIgnorableQikEmail(email.subject)) {
+      if (!isIgnorableQikEmail(email.subject, email.body)) {
         errors.push(`No se pudo parsear el correo ${email.id} ("${email.subject}")`);
       }
       continue;
     }
+
+    // Qik a veces notifica el mismo movimiento por dos canales distintos
+    // (p. ej. "Pago de servicio realizado" y, por separado, "Usaste tu
+    // tarjeta…" para la misma factura pagada con débito) — mismo monto y
+    // fecha/hora exacta pero gmail_message_id distinto, así que el chequeo
+    // de duplicados de arriba no lo detecta. Sin esto se duplicaría el gasto.
+    const { data: duplicate, error: dupError } = await supabase
+      .from("transactions")
+      .select("id")
+      .eq("amount", parsed.amount)
+      .eq("date", parsed.date.toISOString())
+      .eq("type", parsed.type)
+      .maybeSingle();
+    if (dupError) throw new Error(`Error consultando duplicados: ${dupError.message}`);
+    if (duplicate) continue;
 
     const suggestion = await suggestCategory({
       merchant: parsed.merchant,

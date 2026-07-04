@@ -78,7 +78,11 @@ design/                      # Referencias visuales (no es código de la app)
   Supabase, así que cambiar de pestaña siempre da feedback visual
   inmediato en vez de quedarse "congelado" unos segundos.
 - **Mutaciones**: client components → server actions (`lib/actions.ts`) →
-  validación Zod → Supabase → `revalidatePath`.
+  validación Zod → Supabase → `revalidatePath`. Incluye `deleteTransaction`
+  (botón "Eliminar transacción" en el detalle, con confirmación de dos
+  pasos) — antes de esto no había forma de quitar un duplicado desde la
+  UI, solo editar el monto (con el schema exigiendo > 0, ni siquiera se
+  podía poner en cero).
 - **Sync automático**: Gmail Push (Cloud Pub/Sub) notifica a
   `POST /api/gmail-webhook` en cuanto llega un correo nuevo → `runSync()`.
   La suscripción (`watchGmailMailbox`) expira a los 7 días máximo; se
@@ -93,16 +97,22 @@ design/                      # Referencias visuales (no es código de la app)
 
 ## Parser de correos Qik
 
-Los correos transaccionales llegan de **`no-reply-qik@qik.com.do`**.
-`ayuda@qik.com.do` **no es el remitente** — es solo la dirección de soporte
-que Qik menciona en el pie de página de sus correos; filtrar por ella hace
-que el sync nunca encuentre nada (bug real detectado y corregido el
-2026-07-02, ver git log). Los promocionales vienen de otro remitente
-(`promociones@mail.qik.com.do`) y quedan excluidos automáticamente.
+Qik notifica transacciones desde **dos remitentes distintos**:
 
-Qik **no envía las compras con tarjeta débito/crédito por correo** (solo
-llegan como notificación push al celular). Los tipos de correo
-transaccionales confirmados contra la bandeja real son:
+- `no-reply-qik@qik.com.do` → pagos de servicio, retiros CASH, Toke.
+- `notificaciones@qik.do` → compras con tarjeta débito/crédito. Nótese el
+  dominio **`qik.do`** (sin el ".com") — es fácil filtrar solo el primero y
+  perder silenciosamente TODAS las compras con tarjeta (bug real: ~300
+  correos de un año nunca se sincronizaron por esto, corregido el
+  2026-07-04, ver git log — Harold sí las recibía, solo que el sync nunca
+  las buscaba en el remitente correcto).
+
+`ayuda@qik.com.do` **no es remitente** — es la dirección de soporte que Qik
+menciona en el pie de página. Los promocionales vienen de otras direcciones
+(`promociones@mail.qik.com.do`, etc.) y quedan excluidos al no estar en la
+lista de remitentes filtrados.
+
+Tipos de correo transaccionales confirmados contra la bandeja real:
 
 1. **"Pago de servicio realizado"** → gasto (pago de una factura).
    Campos: "Monto total pagado", "Fecha y hora" (`02 julio 2026 / 10:57 a. m.`),
@@ -114,30 +124,77 @@ transaccionales confirmados contra la bandeja real son:
 3. **Cuerpo con "Has recibido RD$…"** (asunto tipo "💵 Te han enviado un
    Toke") → ingreso (transferencia P2P). Campos: "Monto", "Fecha" (sin
    hora), "Realizado por" (usado como `merchant`).
+4. **Compra con tarjeta** — asunto "Usaste tu tarjeta…" o "Se hizo una
+   transacción con tu tarjeta…" → gasto. Dos plantillas según la fecha del
+   correo (ambas soportadas):
+   - **Nueva (2026)**: campos "Localidad", "Fecha y hora"
+     (`07-04-2026 01:11 PM (AST)`), "Monto" (con prefijo `RD$`), "Balance
+     Disponible", "Tarjeta Débito" (`49***...3326` → últimos 4 dígitos).
+   - **Vieja (2025)**: mismos campos pero el comercio es "Lugar" (no
+     "Localidad"), el monto viene sin el prefijo `RD` (solo `$ 20.00`), no
+     hay "Balance Disponible", y agrega "Estatus" (`Aprobada`/`Declinado`).
+     **Una compra con "Estatus: Declinado" usa el mismo asunto que una
+     aprobada** — el parser solo la acepta si el estatus es
+     Aprobada/Exitoso; si no, se ignora sin reportar error.
+5. **"Se reversó una transacción…"** → ingreso (reembolso: el comercio o
+   Qik devuelve el monto de una compra con tarjeta ya cobrada). Mismos
+   campos que la compra con tarjeta.
 
-Otros correos del banco — código CASH creado/vencido, estados de cuenta,
-recordatorio de fecha de pago — **no representan un movimiento de dinero**.
-`isIgnorableQikEmail()` los reconoce por el asunto para que el sync los
-descarte en silencio en vez de reportarlos como error de parseo (son la
-mayoría del volumen real: ~65% de los correos de Qik son de este tipo).
+Otros correos del banco no representan un movimiento de dinero y se
+ignoran en silencio vía `isIgnorableQikEmail()` (recibe subject y,
+opcionalmente, el body — necesario para detectar compras declinadas, que
+comparten asunto con las aprobadas):
 
-- **Fecha**: dos formatos en español, ambos en AST (UTC-4 fijo, RD no tiene
-  horario de verano) — con hora (`DD monthname YYYY / HH:MM a.m./p.m.`) o
-  sin hora (`DD de mon YYYY`, mes abreviado). Sin hora explícita se usa
-  mediodía para no cruzar el límite del día al convertir a UTC.
-- Si el asunto no coincide con ninguno de los 3 tipos transaccionales, o le
-  faltan campos mínimos, el parser devuelve `null`. El sync solo lo reporta
-  como error si `isIgnorableQikEmail()` tampoco lo reconoce como ruido
-  esperado.
+- Código CASH creado/vencido, estados de cuenta, recordatorio de fecha de pago.
+- **"Contraseña de uso único para transacciones electrónicas"** — OTP para
+  autorizar una compra, no es la transacción en sí.
+- **"Cardholder Services Alert"** — alerta de límite de tarjeta (en
+  español pese al asunto en inglés); duplica una compra que ya llega por
+  su propio correo de "Usaste tu tarjeta…" — se ignora para no duplicar.
+- Cualquier correo de compra con `"Estatus"` distinto de
+  `Aprobada`/`Exitoso` (declinada, rechazada, etc.).
+
+Estos tipos ignorables son la mayoría del volumen real de la bandeja
+(bastante más de la mitad de los correos de Qik).
+
+- **Fecha**: tres formatos según el tipo de correo, todos en AST (UTC-4
+  fijo, RD no tiene horario de verano) — numérico `MM-DD-YYYY HH:MM
+  AM/PM (AST)` (compras con tarjeta), español con hora
+  (`DD monthname YYYY / HH:MM a.m./p.m.`), o español sin hora
+  (`DD de mon YYYY`, mes abreviado). Sin hora explícita se usa mediodía
+  para no cruzar el límite del día al convertir a UTC.
+- **Monto**: casi siempre con prefijo `RD$`, pero la plantilla vieja de
+  compras con tarjeta lo manda con solo `$` — `parseAmount()` acepta
+  ambos.
+- Si el asunto no coincide con ningún tipo transaccional reconocido, o le
+  faltan campos mínimos, el parser devuelve `null`. El sync solo lo
+  reporta como error si `isIgnorableQikEmail()` tampoco lo reconoce como
+  ruido esperado.
 - Duplicados: `gmail_message_id` es UNIQUE; el sync filtra los existentes
   antes de insertar y tolera la carrera entre dos syncs simultáneos
   (error 23505).
+- **Duplicados cross-canal**: Qik a veces notifica el MISMO movimiento por
+  dos correos con `gmail_message_id` distinto — p. ej. un pago de servicio
+  hecho con tarjeta de débito genera un "Pago de servicio realizado" Y un
+  "Usaste tu tarjeta…" para la misma factura (bug real: Harold terminó con
+  "Electricidad / Edeeste" RD$1,238.43 duplicado como "EDEESTE 8184", sin
+  forma de eliminarlo desde la UI — corregido el 2026-07-04). Antes de
+  insertar, `runSync()` verifica si ya existe una transacción con el mismo
+  `amount` + `date` (timestamp exacto) + `type`; si existe, omite el
+  insert. El riesgo de falso positivo (dos compras distintas con monto Y
+  segundo exactos iguales) es prácticamente nulo.
+- **Backfill puntual**: `GET /api/sync?days=N` corre el sync con una
+  ventana más amplia que el default de 7 días — útil una sola vez tras
+  arreglar un bug de parseo o agregar un remitente, para recuperar el
+  historial que se perdió. `fetchQikEmails()` pagina y limita la
+  concurrencia al pedir el detalle de cada correo (Gmail responde 429
+  "too many concurrent requests" si se disparan todos a la vez — solo se
+  nota con ventanas largas, el día a día trae pocos correos).
 
 Tests: `src/lib/qik-parser.test.ts`, con fixtures HTML tomados de correos
 reales (nombre/cédula ya enmascarados por el propio Qik). **Si Qik agrega
-un tipo de correo nuevo (p. ej. "Toke enviado" o compras con tarjeta si
-algún día las manda por correo), añade el correo real como caso de test y
-un nuevo builder en `qik-parser.ts` — no adivines el formato.**
+un tipo de correo nuevo, añade el correo real como caso de test y un nuevo
+builder en `qik-parser.ts` — no adivines el formato.**
 
 ## Variables de entorno
 
@@ -315,6 +372,18 @@ inicial del gate.
   tocado) para el instante entre el tap y que aparezca el skeleton.
 - **PWA a mano** (manifest + sw.js simple) en vez de next-pwa/serwist:
   la app es dinámica, un SW network-first basta para instalabilidad iOS.
+- **El Service Worker nunca intercepta navegación (`request.mode ===
+  "navigate"`).** Bug real (corregido el 2026-07-04): la versión anterior
+  clonaba y cacheaba la respuesta de cada navegación — Next.js App Router
+  resuelve cada `loading.tsx`/Suspense boundary mandando el HTML en chunks
+  progresivos sobre la MISMA response, y el `event.respondWith()` +
+  `.clone()` del SW rompía ese streaming; el navegador se quedaba
+  mostrando el skeleton para siempre, el contenido real nunca llegaba a
+  pintarse. Como Peso es 100% dinámica (`force-dynamic` en cada página),
+  cachear HTML de navegación tampoco tenía sentido — la próxima visita
+  siempre debe traer datos frescos. `public/sw.js` ahora deja pasar
+  `navigate` sin tocarlo; solo cachea estáticos (`/_next/static/`,
+  `/icons/`), que no tienen este problema de streaming.
 - **Montos**: siempre `RD$ X,XXX.XX` vía `formatMoney` (`src/lib/format.ts`).
   `amount` se guarda positivo; el signo lo da `type`.
 

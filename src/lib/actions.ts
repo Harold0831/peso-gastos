@@ -49,6 +49,17 @@ export async function confirmTransaction(input: {
   return { ok: true };
 }
 
+export async function deleteTransaction(id: string): Promise<ActionResult> {
+  if (!id) return { ok: false, error: "Falta el id de la transacción" };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin().from("transactions").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateAll();
+  return { ok: true };
+}
+
 export async function createTransaction(input: unknown): Promise<ActionResult> {
   const parsed = transactionSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };

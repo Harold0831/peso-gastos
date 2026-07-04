@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Transaction } from "@/lib/types";
 import { formatFullDate, formatTime } from "@/lib/format";
-import { confirmTransaction } from "@/lib/actions";
+import { confirmTransaction, deleteTransaction } from "@/lib/actions";
 import { BackIcon } from "@/components/icons";
 
 export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: string[] }) {
@@ -16,6 +16,8 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
   const [amount, setAmount] = useState(tx.amount.toFixed(2));
   const [error, setError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, startDeleting] = useTransition();
 
   const date = new Date(tx.date);
   const isExpense = tx.type === "expense";
@@ -41,6 +43,20 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
       });
       if (!result.ok) {
         setError(result.error ?? "No se pudo guardar");
+        return;
+      }
+      router.push("/transactions");
+      router.refresh();
+    });
+  };
+
+  const handleDelete = () => {
+    setError(null);
+    startDeleting(async () => {
+      const result = await deleteTransaction(tx.id);
+      if (!result.ok) {
+        setError(result.error ?? "No se pudo eliminar");
+        setConfirmingDelete(false);
         return;
       }
       router.push("/transactions");
@@ -185,6 +201,36 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
         >
           {editingAmount ? "Cancelar edición" : "Editar monto"}
         </button>
+
+        {/* Eliminar */}
+        {confirmingDelete ? (
+          <div className="mt-3 flex items-center gap-2 rounded-btn border border-expense/30 bg-expense/5 p-3">
+            <span className="flex-1 text-[13px] font-medium text-ink">
+              ¿Eliminar esta transacción?
+            </span>
+            <button
+              onClick={() => setConfirmingDelete(false)}
+              disabled={deleting}
+              className="rounded-btn border border-line px-3 py-2 text-[13px] font-semibold text-ink"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="rounded-btn bg-expense px-3 py-2 text-[13px] font-bold text-white disabled:opacity-60"
+            >
+              {deleting ? "…" : "Sí, eliminar"}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmingDelete(true)}
+            className="mt-1 w-full py-3 text-[13px] font-semibold text-expense"
+          >
+            Eliminar transacción
+          </button>
+        )}
       </div>
     </main>
   );

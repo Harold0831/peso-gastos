@@ -6,12 +6,15 @@ import "server-only";
  * refresh token OAuth2 de larga vida — ver CLAUDE.md para obtenerlo.
  */
 
-// El remitente real de las notificaciones transaccionales es
-// no-reply-qik@qik.com.do. ayuda@qik.com.do es solo la dirección de
-// soporte que Qik menciona en el pie de página de sus correos — nunca
-// envía nada desde ahí. Las promociones vienen de promociones@mail.qik.com.do
-// y quedan excluidas automáticamente al filtrar por este remitente exacto.
-const QIK_SENDER = "no-reply-qik@qik.com.do";
+// Qik notifica transacciones desde DOS remitentes distintos, no uno:
+//   - no-reply-qik@qik.com.do   → pagos de servicio, retiros CASH, Toke
+//   - notificaciones@qik.do     → compras con tarjeta débito/crédito
+//     (dominio "qik.do", sin el ".com" — fácil de confundir con el de
+//     arriba; un filtro que solo busque qik.com.do nunca los encuentra)
+// ayuda@qik.com.do NO es remitente — es la dirección de soporte que Qik
+// menciona en el pie de página de sus correos. Las promociones vienen de
+// promociones@mail.qik.com.do y quedan excluidas al no estar en esta lista.
+const QIK_SENDERS = ["no-reply-qik@qik.com.do", "notificaciones@qik.do"];
 
 export interface GmailMessage {
   id: string;
@@ -97,39 +100,64 @@ function extractBody(payload: MessagePart): string {
   );
 }
 
+/** Procesa `items` con `run`, sin más de `limit` llamadas en vuelo a la vez. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  run: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await run(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 /**
  * Lista los correos de Qik de los últimos `newerThanDays` días y devuelve
- * id, asunto y cuerpo decodificado de cada uno.
+ * id, asunto y cuerpo decodificado de cada uno. Pagina si hay más de 100
+ * resultados y limita la concurrencia al pedir el detalle de cada uno —
+ * la API de Gmail rechaza con 429 ("too many concurrent requests") si se
+ * disparan todas las peticiones a la vez, algo que solo se nota con
+ * ventanas largas (backfills) ya que el día a día trae pocos correos.
  */
 export async function fetchQikEmails(newerThanDays = 7): Promise<GmailMessage[]> {
   const accessToken = await getAccessToken();
-  const query = encodeURIComponent(`from:${QIK_SENDER} newer_than:${newerThanDays}d`);
+  const fromClause = QIK_SENDERS.map((s) => `from:${s}`).join(" OR ");
+  const query = encodeURIComponent(`(${fromClause}) newer_than:${newerThanDays}d`);
 
-  const list = await gmailFetch<{ messages?: { id: string }[] }>(
-    `/messages?q=${query}&maxResults=100`,
-    accessToken,
-  );
-  if (!list.messages?.length) return [];
+  const ids: string[] = [];
+  let pageToken: string | undefined;
+  do {
+    const page = await gmailFetch<{ messages?: { id: string }[]; nextPageToken?: string }>(
+      `/messages?q=${query}&maxResults=100${pageToken ? `&pageToken=${pageToken}` : ""}`,
+      accessToken,
+    );
+    ids.push(...(page.messages ?? []).map((m) => m.id));
+    pageToken = page.nextPageToken;
+  } while (pageToken);
 
-  const messages = await Promise.all(
-    list.messages.map(async ({ id }) => {
-      const msg = await gmailFetch<{
-        id: string;
-        snippet: string;
-        payload: MessagePart & { headers?: { name: string; value: string }[] };
-      }>(`/messages/${id}?format=full`, accessToken);
+  return mapWithConcurrency(ids, 10, async (id) => {
+    const msg = await gmailFetch<{
+      id: string;
+      snippet: string;
+      payload: MessagePart & { headers?: { name: string; value: string }[] };
+    }>(`/messages/${id}?format=full`, accessToken);
 
-      const subject =
-        msg.payload.headers?.find((h) => h.name.toLowerCase() === "subject")?.value ?? "";
-      return {
-        id: msg.id,
-        subject,
-        body: extractBody(msg.payload),
-        snippet: msg.snippet,
-      };
-    }),
-  );
-  return messages;
+    const subject =
+      msg.payload.headers?.find((h) => h.name.toLowerCase() === "subject")?.value ?? "";
+    return {
+      id: msg.id,
+      subject,
+      body: extractBody(msg.payload),
+      snippet: msg.snippet,
+    };
+  });
 }
 
 /**

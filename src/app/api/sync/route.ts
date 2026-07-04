@@ -9,6 +9,12 @@ export const maxDuration = 60;
  * Requiere "Authorization: Bearer $SYNC_SECRET". El botón "Sincronizar" de
  * /transactions usa la server action syncNow(), que ejecuta el mismo
  * runSync() sin exponer el secreto al cliente.
+ *
+ * Acepta ?days=N para un backfill puntual con una ventana más amplia que
+ * el default de 7 días (ej. tras agregar soporte para un remitente que no
+ * se estaba sincronizando). En Vercel corre con maxDuration=60, así que un
+ * backfill grande (cientos de correos) puede excederlo — para eso, mejor
+ * correrlo local con `npm run dev` primero.
  */
 export async function GET(request: NextRequest) {
   const secret = process.env.SYNC_SECRET;
@@ -20,8 +26,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Supabase no configurado" }, { status: 503 });
   }
 
+  const daysParam = request.nextUrl.searchParams.get("days");
+  const days = daysParam ? Number(daysParam) : undefined;
+
   try {
-    const result = await runSync();
+    const result = await runSync(days);
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(
