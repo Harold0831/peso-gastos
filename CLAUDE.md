@@ -83,6 +83,23 @@ design/                      # Referencias visuales (no es código de la app)
   pasos) — antes de esto no había forma de quitar un duplicado desde la
   UI, solo editar el monto (con el schema exigiendo > 0, ni siquiera se
   podía poner en cero).
+- **`deleteTransaction` es soft delete** (columna `deleted_at`, migración
+  `0002`), no un DELETE real. Bug real (corregido el 2026-07-05): al
+  borrar la fila de verdad, el próximo sync (webhook o manual) volvía a
+  encontrar el correo en Gmail, no lo veía en la tabla, y lo re-insertaba
+  — la transacción "eliminada" reaparecía sola después de un rato. Todas
+  las lecturas (`getTransactions`, `getTransactionById`, `getPendingCount`)
+  filtran `deleted_at is null`; los chequeos de duplicados en `runSync()`
+  (por `gmail_message_id` y por monto+fecha+tipo) **no** filtran
+  `deleted_at` a propósito, para seguir reconociendo el correo como ya
+  procesado aunque el usuario lo haya borrado de la vista.
+- **Confirmación en lote** (`confirmTransactionsBulk`): en /transactions,
+  filtro "Por confirmar" → "Seleccionar varias" activa checkboxes en
+  `TxRow` (prop `selectable`). Si 2+ pendientes comparten la misma
+  `ai_suggested_category`, aparece un atajo "N sugeridas como X" que las
+  selecciona todas y precarga esa categoría de un tap — pensado para el
+  caso de varias transacciones similares seguidas (p. ej. varios
+  "PedidosYa" sugeridos como "Alimentación").
 - **Sync automático**: Gmail Push (Cloud Pub/Sub) notifica a
   `POST /api/gmail-webhook` en cuanto llega un correo nuevo → `runSync()`.
   La suscripción (`watchGmailMailbox`) expira a los 7 días máximo; se

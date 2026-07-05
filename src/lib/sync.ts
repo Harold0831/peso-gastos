@@ -31,6 +31,9 @@ export async function runSync(newerThanDays?: number): Promise<SyncResult> {
   const emails = await fetchQikEmails(newerThanDays);
   if (emails.length === 0) return { synced: 0, errors };
 
+  // Deliberadamente sin filtrar deleted_at: si el usuario eliminó la
+  // transacción (soft delete), el correo sigue existiendo en Gmail y no
+  // debe re-insertarse solo porque ya no aparece en la UI.
   const { data: existing, error: existingError } = await supabase
     .from("transactions")
     .select("gmail_message_id")

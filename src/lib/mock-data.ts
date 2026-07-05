@@ -40,6 +40,7 @@ const tx = (
   notes: null,
   created_at: overrides.date,
   raw_email_snippet: null,
+  deleted_at: null,
   ...overrides,
 });
 
@@ -118,6 +119,24 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
     type: "expense",
     date: daysAgo(6, 7, 45),
     category: "Transporte",
+  }),
+  tx("t11", {
+    merchant: "Cabify",
+    amount: 420,
+    type: "expense",
+    date: daysAgo(0, 8, 20),
+    confirmed: false,
+    ai_suggested_category: "Transporte",
+    available_balance: 47790.35,
+  }),
+  tx("t12", {
+    merchant: "PedidosYa*Wendys",
+    amount: 780,
+    type: "expense",
+    date: daysAgo(1, 20, 5),
+    confirmed: false,
+    ai_suggested_category: "Alimentación",
+    available_balance: 51100.85,
   }),
 ];
 

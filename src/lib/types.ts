@@ -16,6 +16,9 @@ export interface Transaction {
   notes: string | null;
   created_at: string;
   raw_email_snippet: string | null;
+  /** Soft delete: no null → oculta de la UI, pero sigue en la tabla para
+   *  que el sync no vuelva a insertar el mismo correo. */
+  deleted_at: string | null;
 }
 
 export interface Category {

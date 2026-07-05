@@ -117,7 +117,8 @@ function GoalCard({ goal }: { goal: SavingsGoal }) {
             />
             <button
               onClick={() => setContributing(false)}
-              className="rounded-btn border border-line px-3 py-2 text-[13px] font-semibold text-ink"
+              aria-label="Cancelar abono"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-btn border border-line text-[13px] font-semibold text-ink"
             >
               ✕
             </button>

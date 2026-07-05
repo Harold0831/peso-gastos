@@ -43,14 +43,22 @@ export default async function ChartsPage({
       </div>
 
       {/* Selector de mes */}
-      <div className="flex items-center justify-center gap-6 pb-4">
-        <Link href={`/charts?m=${prev}`} className="px-3 py-1 text-lg text-ink-muted">
+      <div className="flex items-center justify-center gap-2 pb-4">
+        <Link
+          href={`/charts?m=${prev}`}
+          aria-label="Mes anterior"
+          className="flex h-11 w-11 items-center justify-center text-lg text-ink-muted"
+        >
           ‹
         </Link>
         <span className="min-w-32 text-center text-[15px] font-bold tracking-tight text-ink">
           {formatMonthLabel(month)}
         </span>
-        <Link href={`/charts?m=${next}`} className="px-3 py-1 text-lg text-ink-muted">
+        <Link
+          href={`/charts?m=${next}`}
+          aria-label="Mes siguiente"
+          className="flex h-11 w-11 items-center justify-center text-lg text-ink-muted"
+        >
           ›
         </Link>
       </div>

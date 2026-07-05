@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
 import {
   budgetSchema,
+  bulkConfirmSchema,
   confirmSchema,
   contributionSchema,
   goalSchema,
@@ -49,11 +50,45 @@ export async function confirmTransaction(input: {
   return { ok: true };
 }
 
+/**
+ * Confirma varias transacciones a la vez con la misma categoría — útil
+ * cuando llegan varias pendientes seguidas del mismo tipo (p. ej. varios
+ * "Uber" o "PedidosYa" sugeridos como "Transporte"/"Alimentación") y no
+ * tiene sentido confirmarlas una por una.
+ */
+export async function confirmTransactionsBulk(input: {
+  ids: string[];
+  category: string;
+}): Promise<ActionResult> {
+  const parsed = bulkConfirmSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("transactions")
+    .update({ category: parsed.data.category, confirmed: true })
+    .in("id", parsed.data.ids);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateAll();
+  return { ok: true };
+}
+
+/**
+ * Soft delete: no borra la fila. Un DELETE real deja libre el
+ * gmail_message_id y el próximo sync (webhook o manual) vuelve a
+ * encontrar ese correo en Gmail, no lo ve en la tabla y lo re-inserta
+ * como si fuera nuevo — bug real (corregido el 2026-07-05): una
+ * transacción eliminada volvía a aparecer sola después de un rato.
+ */
 export async function deleteTransaction(id: string): Promise<ActionResult> {
   if (!id) return { ok: false, error: "Falta el id de la transacción" };
   if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
 
-  const { error } = await getSupabaseAdmin().from("transactions").delete().eq("id", id);
+  const { error } = await getSupabaseAdmin()
+    .from("transactions")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
   if (error) return { ok: false, error: error.message };
 
   revalidateAll();

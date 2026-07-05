@@ -38,7 +38,7 @@ export async function getTransactions(options?: {
   limit?: number;
 }): Promise<Transaction[]> {
   if (!isSupabaseConfigured()) {
-    let rows = [...MOCK_TRANSACTIONS];
+    let rows = MOCK_TRANSACTIONS.filter((t) => !t.deleted_at);
     if (options?.month) {
       const { from, to } = monthRange(options.month);
       rows = rows.filter((t) => t.date >= from && t.date <= to);
@@ -50,6 +50,7 @@ export async function getTransactions(options?: {
   let query = getSupabaseAdmin()
     .from("transactions")
     .select("*")
+    .is("deleted_at", null)
     .order("date", { ascending: false });
   if (options?.month) {
     const { from, to } = monthRange(options.month);
@@ -65,12 +66,13 @@ export async function getTransactions(options?: {
 
 export async function getTransactionById(id: string): Promise<Transaction | null> {
   if (!isSupabaseConfigured()) {
-    return MOCK_TRANSACTIONS.find((t) => t.id === id) ?? null;
+    return MOCK_TRANSACTIONS.find((t) => t.id === id && !t.deleted_at) ?? null;
   }
   const { data, error } = await getSupabaseAdmin()
     .from("transactions")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .maybeSingle();
   if (error) throw new Error(`Error cargando transacción: ${error.message}`);
   return data ? normalizeTransaction(data) : null;
@@ -78,12 +80,13 @@ export async function getTransactionById(id: string): Promise<Transaction | null
 
 export async function getPendingCount(): Promise<number> {
   if (!isSupabaseConfigured()) {
-    return MOCK_TRANSACTIONS.filter((t) => !t.confirmed).length;
+    return MOCK_TRANSACTIONS.filter((t) => !t.confirmed && !t.deleted_at).length;
   }
   const { count, error } = await getSupabaseAdmin()
     .from("transactions")
     .select("id", { count: "exact", head: true })
-    .eq("confirmed", false);
+    .eq("confirmed", false)
+    .is("deleted_at", null);
   if (error) throw new Error(`Error contando pendientes: ${error.message}`);
   return count ?? 0;
 }

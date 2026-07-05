@@ -19,6 +19,11 @@ export const confirmSchema = z.object({
   amount: z.coerce.number().positive("El monto debe ser mayor que 0").optional(),
 });
 
+export const bulkConfirmSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1, "Selecciona al menos una transacción"),
+  category: z.string().trim().min(1, "Selecciona una categoría"),
+});
+
 export const budgetSchema = z.object({
   category_id: z.string().min(1, "Selecciona una categoría"),
   month: z.string().regex(/^\d{4}-\d{2}-01$/, "Mes inválido"),

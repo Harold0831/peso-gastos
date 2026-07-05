@@ -46,15 +46,16 @@ export default async function DashboardPage() {
             <div className="text-[17px] font-bold tracking-tight text-ink">Hola, Harold</div>
           </div>
         </div>
-        <button
-          aria-label="Notificaciones"
+        <Link
+          href="/transactions?filter=pendientes"
+          aria-label="Transacciones por confirmar"
           className="relative flex h-[38px] w-[38px] items-center justify-center rounded-pill border border-line bg-surface text-ink"
         >
           <BellIcon />
           {pendingCount > 0 && (
             <span className="absolute right-2.5 top-2 h-[7px] w-[7px] rounded-pill border-[1.5px] border-surface bg-expense" />
           )}
-        </button>
+        </Link>
       </div>
 
       {/* Balance card */}
@@ -66,8 +67,14 @@ export default async function DashboardPage() {
           <Donut income={summary.income} expenses={summary.expenses} />
         </div>
         <div className="mt-2 flex items-baseline gap-1.5">
-          <span className="text-sm font-semibold text-ink-muted">RD$</span>
-          <span className="text-[38px] font-extrabold leading-none tracking-tighter text-ink">
+          <span className="text-sm font-semibold text-ink-muted">
+            {summary.net < 0 ? "−RD$" : "RD$"}
+          </span>
+          <span
+            className={`text-[38px] font-extrabold leading-none tracking-tighter ${
+              summary.net < 0 ? "text-expense" : "text-ink"
+            }`}
+          >
             {Math.abs(summary.net).toLocaleString("en-US", {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
