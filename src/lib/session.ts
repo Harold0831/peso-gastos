@@ -31,11 +31,22 @@ export async function verifySessionToken(token: string): Promise<boolean> {
   return (await readSessionUserId(token)) !== null;
 }
 
-/** user_id de la sesión, o null si el token es inválido/expirado. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * user_id de la sesión, o null si el token es inválido/expirado.
+ *
+ * El chequeo de UUID no es cosmético: las cookies del sistema single-user
+ * anterior traen `sub: "harold"` con firma válida y 30 días de vida —
+ * sin este filtro pasan el middleware y revientan la primera query
+ * (`user_id = "harold"` no es un uuid para Postgres), tumbando la página
+ * completa con un server error. Con el filtro, la sesión vieja se trata
+ * como inválida y el middleware manda a /login a re-autenticar con Google.
+ */
 export async function readSessionUserId(token: string): Promise<string | null> {
   try {
     const { payload } = await jwtVerify(token, getSecret());
-    return typeof payload.sub === "string" ? payload.sub : null;
+    return typeof payload.sub === "string" && UUID_RE.test(payload.sub) ? payload.sub : null;
   } catch {
     return null;
   }
