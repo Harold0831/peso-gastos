@@ -3,16 +3,24 @@ import {
   verifyAuthenticationResponse,
   type AuthenticationResponseJSON,
 } from "@simplewebauthn/server";
-import { getCredentialById, getRpConfig, updateCounter } from "@/lib/webauthn";
+import { getRpConfig, getUserCredentialById, updateCounter } from "@/lib/webauthn";
 import {
   CHALLENGE_COOKIE,
   SESSION_COOKIE,
   createSessionToken,
   readChallengeToken,
+  readSessionUserId,
   sessionCookieOptions,
 } from "@/lib/session";
 
+/** Verifica el passkey del usuario en sesión y renueva la cookie (30 días más). */
 export async function POST(request: NextRequest) {
+  const sessionToken = request.cookies.get(SESSION_COOKIE)?.value;
+  const userId = sessionToken ? await readSessionUserId(sessionToken) : null;
+  if (!userId) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  }
+
   const challengeToken = request.cookies.get(CHALLENGE_COOKIE)?.value;
   const expectedChallenge = challengeToken ? await readChallengeToken(challengeToken) : null;
   if (!expectedChallenge) {
@@ -20,7 +28,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json()) as AuthenticationResponseJSON;
-  const stored = await getCredentialById(body.id);
+  const stored = await getUserCredentialById(userId, body.id);
   if (!stored) {
     return NextResponse.json({ error: "Passkey desconocido" }, { status: 400 });
   }
@@ -46,7 +54,7 @@ export async function POST(request: NextRequest) {
   await updateCounter(stored.id, verification.authenticationInfo.newCounter);
 
   const response = NextResponse.json({ verified: true });
-  response.cookies.set(SESSION_COOKIE, await createSessionToken(), sessionCookieOptions);
+  response.cookies.set(SESSION_COOKIE, await createSessionToken(userId), sessionCookieOptions);
   response.cookies.delete(CHALLENGE_COOKIE);
   return response;
 }

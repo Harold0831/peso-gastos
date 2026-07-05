@@ -1,32 +1,38 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { generateRegistrationOptions } from "@simplewebauthn/server";
-import { getCredentials, getRpConfig, WEBAUTHN_USER } from "@/lib/webauthn";
+import { getCredentialsForUser, getRpConfig } from "@/lib/webauthn";
+import { getUserById } from "@/lib/users";
 import {
   CHALLENGE_COOKIE,
   SESSION_COOKIE,
   challengeCookieOptions,
   createChallengeToken,
-  verifySessionToken,
+  readSessionUserId,
 } from "@/lib/session";
 
+/**
+ * Registra un passkey del dispositivo para el bloqueo con Face ID.
+ * Requiere sesión activa (el login primario es Google).
+ */
 export async function POST(request: NextRequest) {
-  const credentials = await getCredentials();
-
-  // Registro abierto solo si aún no hay ningún passkey (primer setup).
-  // Con passkeys existentes se exige sesión activa para añadir otro dispositivo.
-  if (credentials.length > 0) {
-    const token = request.cookies.get(SESSION_COOKIE)?.value;
-    if (!token || !(await verifySessionToken(token))) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-    }
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const userId = token ? await readSessionUserId(token) : null;
+  if (!userId) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
+  const user = await getUserById(userId);
+  if (!user) {
+    return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
+  }
+
+  const credentials = await getCredentialsForUser(userId);
   const { rpID } = getRpConfig(request.nextUrl.origin);
   const options = await generateRegistrationOptions({
     rpName: "Peso",
     rpID,
-    userName: WEBAUTHN_USER.name,
-    userDisplayName: WEBAUTHN_USER.displayName,
+    userName: user.email,
+    userDisplayName: user.name ?? user.email,
     attestationType: "none",
     excludeCredentials: credentials.map((c) => ({
       id: c.id,

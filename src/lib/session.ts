@@ -7,6 +7,7 @@ import { SignJWT, jwtVerify } from "jose";
 
 export const SESSION_COOKIE = "peso_session";
 export const CHALLENGE_COOKIE = "peso_challenge";
+export const OAUTH_STATE_COOKIE = "peso_oauth_state";
 const SESSION_DAYS = 30;
 
 function getSecret(): Uint8Array {
@@ -17,8 +18,9 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
-export async function createSessionToken(): Promise<string> {
-  return new SignJWT({ sub: "harold" })
+/** `sub` es el uuid del usuario en la tabla users. */
+export async function createSessionToken(userId: string): Promise<string> {
+  return new SignJWT({ sub: userId })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_DAYS}d`)
@@ -26,11 +28,16 @@ export async function createSessionToken(): Promise<string> {
 }
 
 export async function verifySessionToken(token: string): Promise<boolean> {
+  return (await readSessionUserId(token)) !== null;
+}
+
+/** user_id de la sesión, o null si el token es inválido/expirado. */
+export async function readSessionUserId(token: string): Promise<string | null> {
   try {
-    await jwtVerify(token, getSecret());
-    return true;
+    const { payload } = await jwtVerify(token, getSecret());
+    return typeof payload.sub === "string" ? payload.sub : null;
   } catch {
-    return false;
+    return null;
   }
 }
 

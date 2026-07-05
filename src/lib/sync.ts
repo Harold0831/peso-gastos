@@ -1,34 +1,60 @@
 import "server-only";
-import { fetchQikEmails } from "./gmail";
+import { GmailAuthError, fetchQikEmails } from "./gmail";
 import { isIgnorableQikEmail, parseQikEmail } from "./qik-parser";
 import { suggestCategory } from "./gemini";
 import { getSupabaseAdmin } from "./supabase";
+import { decryptToken } from "./crypto";
 
 export interface SyncResult {
   synced: number;
   errors: string[];
 }
 
+interface GmailAccountRow {
+  user_id: string;
+  email: string;
+  refresh_token_enc: string;
+  sync_enabled: boolean;
+}
+
 /**
- * Pipeline de sincronización:
+ * Pipeline de sincronización de UN usuario:
  *  1. Trae correos recientes de los remitentes de Qik (ver gmail.ts)
- *  2. Descarta los que ya existen (gmail_message_id único)
+ *  2. Descarta los que ya existen para ese usuario (gmail_message_id)
  *  3. Parsea cada correo nuevo con regex
- *  4. Descarta si ya existe una transacción con mismo monto/fecha/tipo
- *     (Qik notifica algunos movimientos por dos correos distintos)
+ *  4. Descarta si el usuario ya tiene una transacción con mismo
+ *     monto/fecha/tipo (Qik notifica algunos movimientos por dos correos)
  *  5. Pide sugerencia de categoría a Gemini (falla suave → sin sugerencia)
  *  6. Inserta con confirmed=false
  *
- * `newerThanDays` normalmente no hace falta pasarlo (default 7, suficiente
- * para el uso diario). Sirve para un backfill puntual — p. ej. tras
- * corregir un bug de parseo o agregar soporte para un remitente que no se
- * estaba filtrando — llamando /api/sync?days=365 una sola vez.
+ * Si el refresh token fue revocado (GmailAuthError), marca la cuenta con
+ * sync_enabled=false — el perfil muestra "reconectar Gmail" y los crons
+ * dejan de intentar con esa cuenta hasta que se reconecte.
  */
-export async function runSync(newerThanDays?: number): Promise<SyncResult> {
+export async function runSyncForUser(userId: string, newerThanDays?: number): Promise<SyncResult> {
   const supabase = getSupabaseAdmin();
   const errors: string[] = [];
 
-  const emails = await fetchQikEmails(newerThanDays);
+  const { data: account, error: accountError } = await supabase
+    .from("gmail_accounts")
+    .select("user_id, email, refresh_token_enc, sync_enabled")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (accountError) throw new Error(`Error cargando cuenta de Gmail: ${accountError.message}`);
+  if (!account) {
+    return { synced: 0, errors: ["Este usuario no tiene Gmail vinculado"] };
+  }
+
+  let emails;
+  try {
+    emails = await fetchQikEmails(decryptToken(account.refresh_token_enc), newerThanDays);
+  } catch (err) {
+    if (err instanceof GmailAuthError) {
+      await supabase.from("gmail_accounts").update({ sync_enabled: false }).eq("user_id", userId);
+      return { synced: 0, errors: ["El acceso a Gmail expiró — reconéctalo desde tu perfil"] };
+    }
+    throw err;
+  }
   if (emails.length === 0) return { synced: 0, errors };
 
   // Deliberadamente sin filtrar deleted_at: si el usuario eliminó la
@@ -37,6 +63,7 @@ export async function runSync(newerThanDays?: number): Promise<SyncResult> {
   const { data: existing, error: existingError } = await supabase
     .from("transactions")
     .select("gmail_message_id")
+    .eq("user_id", userId)
     .in(
       "gmail_message_id",
       emails.map((e) => e.id),
@@ -72,6 +99,7 @@ export async function runSync(newerThanDays?: number): Promise<SyncResult> {
     const { data: duplicate, error: dupError } = await supabase
       .from("transactions")
       .select("id")
+      .eq("user_id", userId)
       .eq("amount", parsed.amount)
       .eq("date", parsed.date.toISOString())
       .eq("type", parsed.type)
@@ -87,6 +115,7 @@ export async function runSync(newerThanDays?: number): Promise<SyncResult> {
     });
 
     const { error: insertError } = await supabase.from("transactions").insert({
+      user_id: userId,
       gmail_message_id: email.id,
       type: parsed.type,
       merchant: parsed.merchant,
@@ -110,5 +139,41 @@ export async function runSync(newerThanDays?: number): Promise<SyncResult> {
     synced++;
   }
 
+  return { synced, errors };
+}
+
+/** Sincroniza al usuario dueño de una dirección de Gmail (webhook push). */
+export async function runSyncForGmailAddress(email: string): Promise<SyncResult> {
+  const { data: account, error } = await getSupabaseAdmin()
+    .from("gmail_accounts")
+    .select("user_id, sync_enabled")
+    .eq("email", email.toLowerCase())
+    .maybeSingle();
+  if (error) throw new Error(`Error buscando cuenta de Gmail: ${error.message}`);
+  if (!account || !account.sync_enabled) {
+    return { synced: 0, errors: [] }; // dirección desconocida o sync apagado: ignora
+  }
+  return runSyncForUser(account.user_id);
+}
+
+/** Sincroniza todos los usuarios con Gmail vinculado (GET /api/sync). */
+export async function runSyncAll(newerThanDays?: number): Promise<SyncResult> {
+  const { data: accounts, error } = await getSupabaseAdmin()
+    .from("gmail_accounts")
+    .select("user_id, email, refresh_token_enc, sync_enabled")
+    .eq("sync_enabled", true);
+  if (error) throw new Error(`Error listando cuentas de Gmail: ${error.message}`);
+
+  let synced = 0;
+  const errors: string[] = [];
+  for (const account of (accounts ?? []) as GmailAccountRow[]) {
+    try {
+      const result = await runSyncForUser(account.user_id, newerThanDays);
+      synced += result.synced;
+      errors.push(...result.errors.map((e) => `[${account.email}] ${e}`));
+    } catch (err) {
+      errors.push(`[${account.email}] ${err instanceof Error ? err.message : "Error"}`);
+    }
+  }
   return { synced, errors };
 }

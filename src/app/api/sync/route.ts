@@ -1,14 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { runSync } from "@/lib/sync";
+import { runSyncAll } from "@/lib/sync";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 export const maxDuration = 60;
 
 /**
  * Endpoint de sincronización para llamadas externas (curl, atajos de iOS…).
- * Requiere "Authorization: Bearer $SYNC_SECRET". El botón "Sincronizar" de
- * /transactions usa la server action syncNow(), que ejecuta el mismo
- * runSync() sin exponer el secreto al cliente.
+ * Requiere "Authorization: Bearer $SYNC_SECRET". Sincroniza TODOS los
+ * usuarios con Gmail vinculado. El botón "Sincronizar" de /transactions usa
+ * la server action syncNow(), que sincroniza solo al usuario en sesión.
  *
  * Acepta ?days=N para un backfill puntual con una ventana más amplia que
  * el default de 7 días (ej. tras agregar soporte para un remitente que no
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
   const days = daysParam ? Number(daysParam) : undefined;
 
   try {
-    const result = await runSync(days);
+    const result = await runSyncAll(days);
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(

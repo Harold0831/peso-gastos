@@ -2,9 +2,18 @@ import "server-only";
 
 /**
  * Cliente mínimo de la API de Gmail usando fetch directo (sin googleapis,
- * que pesa ~100 MB y no aporta nada para 3 endpoints). Autentica con un
- * refresh token OAuth2 de larga vida — ver CLAUDE.md para obtenerlo.
+ * que pesa ~100 MB y no aporta nada para 3 endpoints). Con multi-usuario,
+ * cada función recibe el refresh token del usuario (guardado cifrado en
+ * gmail_accounts) — ya no hay un token global en env vars.
  */
+
+/** El refresh token fue revocado o expiró: el usuario debe reconectar Gmail. */
+export class GmailAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GmailAuthError";
+  }
+}
 
 // Qik notifica transacciones desde DOS remitentes distintos, no uno:
 //   - no-reply-qik@qik.com.do   → pagos de servicio, retiros CASH, Toke
@@ -23,12 +32,11 @@ export interface GmailMessage {
   snippet: string;
 }
 
-async function getAccessToken(): Promise<string> {
+async function getAccessToken(refreshToken: string): Promise<string> {
   const clientId = process.env.GMAIL_CLIENT_ID;
   const clientSecret = process.env.GMAIL_CLIENT_SECRET;
-  const refreshToken = process.env.GMAIL_REFRESH_TOKEN;
-  if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error("Faltan GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET o GMAIL_REFRESH_TOKEN");
+  if (!clientId || !clientSecret) {
+    throw new Error("Faltan GMAIL_CLIENT_ID o GMAIL_CLIENT_SECRET");
   }
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
@@ -42,7 +50,13 @@ async function getAccessToken(): Promise<string> {
     }),
   });
   if (!res.ok) {
-    throw new Error(`No se pudo refrescar el token de Gmail (${res.status}): ${await res.text()}`);
+    const body = await res.text();
+    // invalid_grant = token revocado (el usuario quitó el acceso en su
+    // cuenta de Google) o expirado — hay que pedirle que reconecte.
+    if (res.status === 400 && body.includes("invalid_grant")) {
+      throw new GmailAuthError("El acceso a Gmail fue revocado o expiró");
+    }
+    throw new Error(`No se pudo refrescar el token de Gmail (${res.status}): ${body}`);
   }
   const data = (await res.json()) as { access_token: string };
   return data.access_token;
@@ -126,8 +140,11 @@ async function mapWithConcurrency<T, R>(
  * disparan todas las peticiones a la vez, algo que solo se nota con
  * ventanas largas (backfills) ya que el día a día trae pocos correos.
  */
-export async function fetchQikEmails(newerThanDays = 7): Promise<GmailMessage[]> {
-  const accessToken = await getAccessToken();
+export async function fetchQikEmails(
+  refreshToken: string,
+  newerThanDays = 7,
+): Promise<GmailMessage[]> {
+  const accessToken = await getAccessToken(refreshToken);
   const fromClause = QIK_SENDERS.map((s) => `from:${s}`).join(" OR ");
   const query = encodeURIComponent(`(${fromClause}) newer_than:${newerThanDays}d`);
 
@@ -167,9 +184,10 @@ export async function fetchQikEmails(newerThanDays = 7): Promise<GmailMessage[]>
  * `POST /api/gmail-watch/renew` (ver vercel.json, cron diario).
  */
 export async function watchGmailMailbox(
+  refreshToken: string,
   topicName: string,
 ): Promise<{ historyId: string; expiration: string }> {
-  const accessToken = await getAccessToken();
+  const accessToken = await getAccessToken(refreshToken);
   return gmailPost("/watch", accessToken, {
     topicName,
     labelIds: ["INBOX"],

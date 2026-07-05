@@ -2,38 +2,47 @@ import "server-only";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
 import type { AuthenticatorTransportFuture } from "@simplewebauthn/server";
 
+/**
+ * Passkeys por usuario. Con multi-cuenta, el passkey ya no es el login
+ * primario (eso es Google) — es la capa de re-bloqueo con Face ID
+ * (AppLockGate): cada usuario puede registrar passkeys de sus dispositivos
+ * y la app se los pide al volver de background o abrir desde cero.
+ */
+
 export interface StoredCredential {
   id: string;
+  user_id: string;
   public_key: string;
   counter: number;
   transports: AuthenticatorTransportFuture[] | null;
 }
-
-/** App de un solo usuario: identificador fijo para el user handle de WebAuthn. */
-export const WEBAUTHN_USER = {
-  id: "peso-harold",
-  name: "harold3112@gmail.com",
-  displayName: "Harold",
-};
 
 export function getRpConfig(requestOrigin: string): { rpID: string; origin: string } {
   const url = new URL(requestOrigin);
   return { rpID: url.hostname, origin: url.origin };
 }
 
-export async function getCredentials(): Promise<StoredCredential[]> {
+export async function getCredentialsForUser(userId: string): Promise<StoredCredential[]> {
   if (!isSupabaseConfigured()) return [];
-  const { data, error } = await getSupabaseAdmin().from("webauthn_credentials").select("*");
+  const { data, error } = await getSupabaseAdmin()
+    .from("webauthn_credentials")
+    .select("*")
+    .eq("user_id", userId);
   if (error) throw new Error(`Error cargando credenciales: ${error.message}`);
   return data ?? [];
 }
 
-export async function getCredentialById(id: string): Promise<StoredCredential | null> {
+/** Solo devuelve la credencial si pertenece al usuario indicado. */
+export async function getUserCredentialById(
+  userId: string,
+  id: string,
+): Promise<StoredCredential | null> {
   if (!isSupabaseConfigured()) return null;
   const { data, error } = await getSupabaseAdmin()
     .from("webauthn_credentials")
     .select("*")
     .eq("id", id)
+    .eq("user_id", userId)
     .maybeSingle();
   if (error) throw new Error(`Error cargando credencial: ${error.message}`);
   return data;

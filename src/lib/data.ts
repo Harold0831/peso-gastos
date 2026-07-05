@@ -1,12 +1,14 @@
 import "server-only";
 import { endOfMonth, startOfMonth } from "date-fns";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
+import { requireUserId } from "./users";
 import { MOCK_BUDGETS, MOCK_CATEGORIES, MOCK_GOALS, MOCK_TRANSACTIONS } from "./mock-data";
 import type { Budget, Category, SavingsGoal, Transaction } from "./types";
 
 /**
- * Capa de lectura de datos. Cuando Supabase no está configurado (dev local
- * sin credenciales) devuelve datos mock para que toda la UI sea navegable.
+ * Capa de lectura de datos, siempre acotada al usuario de la sesión
+ * (multi-usuario). Cuando Supabase no está configurado (dev local sin
+ * credenciales) devuelve datos mock para que toda la UI sea navegable.
  */
 
 export interface MonthSummary {
@@ -50,6 +52,7 @@ export async function getTransactions(options?: {
   let query = getSupabaseAdmin()
     .from("transactions")
     .select("*")
+    .eq("user_id", await requireUserId())
     .is("deleted_at", null)
     .order("date", { ascending: false });
   if (options?.month) {
@@ -72,6 +75,7 @@ export async function getTransactionById(id: string): Promise<Transaction | null
     .from("transactions")
     .select("*")
     .eq("id", id)
+    .eq("user_id", await requireUserId())
     .is("deleted_at", null)
     .maybeSingle();
   if (error) throw new Error(`Error cargando transacción: ${error.message}`);
@@ -85,6 +89,7 @@ export async function getPendingCount(): Promise<number> {
   const { count, error } = await getSupabaseAdmin()
     .from("transactions")
     .select("id", { count: "exact", head: true })
+    .eq("user_id", await requireUserId())
     .eq("confirmed", false)
     .is("deleted_at", null);
   if (error) throw new Error(`Error contando pendientes: ${error.message}`);
@@ -119,6 +124,7 @@ export async function getBudgetsForMonth(month: Date): Promise<BudgetWithSpend[]
     const { data, error } = await getSupabaseAdmin()
       .from("budgets")
       .select("*")
+      .eq("user_id", await requireUserId())
       .eq("month", monthKey);
     if (error) throw new Error(`Error cargando presupuestos: ${error.message}`);
     budgets = (data ?? []).map((b) => ({ ...b, limit_amount: Number(b.limit_amount) }));
@@ -142,6 +148,7 @@ export async function getGoals(): Promise<SavingsGoal[]> {
   const { data, error } = await getSupabaseAdmin()
     .from("savings_goals")
     .select("*")
+    .eq("user_id", await requireUserId())
     .order("created_at");
   if (error) throw new Error(`Error cargando metas: ${error.message}`);
   return (data ?? []).map((g) => ({

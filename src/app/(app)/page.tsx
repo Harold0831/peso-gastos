@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { getBudgetsForMonth, getMonthSummary, getPendingCount, getTransactions } from "@/lib/data";
-import { formatMoney, formatMonthLabel } from "@/lib/format";
+import { formatMoney, formatMonthLabel, merchantInitials } from "@/lib/format";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import { getGmailStatus, getUserById, requireUserId, type GmailStatus } from "@/lib/users";
 import { Donut } from "@/components/donut";
 import { TxRow } from "@/components/tx-row";
 import { BellIcon, ChevronIcon, WalletIcon } from "@/components/icons";
@@ -22,6 +24,16 @@ function greeting(): string {
 
 export default async function DashboardPage() {
   const now = new Date();
+
+  let displayName = "Demo";
+  let gmail: GmailStatus = { linked: true, email: null, syncEnabled: true };
+  if (isSupabaseConfigured()) {
+    const userId = await requireUserId();
+    const [user, gmailStatus] = await Promise.all([getUserById(userId), getGmailStatus(userId)]);
+    displayName = user?.name?.split(" ")[0] ?? user?.email ?? "Usuario";
+    gmail = gmailStatus;
+  }
+
   const [summary, pendingCount, recent, budgets] = await Promise.all([
     getMonthSummary(now),
     getPendingCount(),
@@ -37,15 +49,17 @@ export default async function DashboardPage() {
     <main className="px-5 pt-safe">
       {/* Top bar */}
       <div className="flex items-center justify-between py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-[38px] w-[38px] items-center justify-center rounded-pill bg-accent text-sm font-semibold tracking-wide text-white">
-            HJ
-          </div>
-          <div>
-            <div className="text-[11px] font-medium text-ink-muted">{greeting()}</div>
-            <div className="text-[17px] font-bold tracking-tight text-ink">Hola, Harold</div>
-          </div>
-        </div>
+        <Link href="/profile" className="flex items-center gap-3">
+          <span className="flex h-[38px] w-[38px] items-center justify-center rounded-pill bg-accent text-sm font-semibold tracking-wide text-white">
+            {merchantInitials(displayName)}
+          </span>
+          <span>
+            <span className="block text-[11px] font-medium text-ink-muted">{greeting()}</span>
+            <span className="block text-[17px] font-bold tracking-tight text-ink">
+              Hola, {displayName}
+            </span>
+          </span>
+        </Link>
         <Link
           href="/transactions?filter=pendientes"
           aria-label="Transacciones por confirmar"
@@ -102,6 +116,31 @@ export default async function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {/* Vincular/reconectar Gmail */}
+      {(!gmail.linked || !gmail.syncEnabled) && (
+        <Link
+          href="/profile"
+          className="mt-3.5 flex items-center gap-3 rounded-[14px] border border-accent/30 bg-accent/5 px-4 py-3"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-accent/10 text-base">
+            ✉️
+          </span>
+          <span className="flex-1">
+            <span className="block text-[13px] font-semibold text-ink">
+              {gmail.linked
+                ? "El acceso a tu Gmail expiró"
+                : "Vincula tu Gmail para importar transacciones"}
+            </span>
+            <span className="block text-[11px] text-ink-muted">
+              {gmail.linked
+                ? "Reconéctalo para que el sync siga funcionando · Toca aquí"
+                : "Peso registra solo tus movimientos de Qik · Toca para configurar"}
+            </span>
+          </span>
+          <ChevronIcon className="text-ink-muted" />
+        </Link>
+      )}
 
       {/* Pendientes */}
       {pendingCount > 0 && (

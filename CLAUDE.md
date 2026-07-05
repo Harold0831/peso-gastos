@@ -1,9 +1,11 @@
 # Peso — Finanzas personales (PWA)
 
-App personal de rastreo de gastos e ingresos para Harold. Importa
+App de rastreo de gastos e ingresos, **multi-usuario**. Cada usuario entra
+con su cuenta de Google y puede vincular su Gmail para que Peso importe
 automáticamente las notificaciones de transacciones del banco **Qik**
-(neobanco dominicano) desde Gmail, las categoriza con Gemini y las presenta
-en una PWA móvil instalable en iPhone. Un solo usuario, desplegada en Vercel.
+(neobanco dominicano), las categorice con Gemini y las presente en una PWA
+móvil instalable en iPhone. Creada por Harold, desplegada en Vercel,
+pensada para él y sus amigos (máx. 100 usuarios — ver § Configurar Google).
 
 ## Comandos
 
@@ -18,7 +20,7 @@ node scripts/generate-icons.mjs   # regenerar íconos PWA
 
 **Modo demo:** sin `.env.local` la app corre con datos mock y sin login —
 toda la UI es navegable. Las mutaciones devuelven un error amigable.
-Con Supabase configurado, el middleware exige sesión por passkey.
+Con Supabase configurado, el middleware exige sesión (login con Google).
 
 ## Arquitectura
 
@@ -28,7 +30,7 @@ src/
 ├── app/
 │   ├── layout.tsx            # Fuente Inter, meta PWA, theme script
 │   ├── manifest.ts           # Web manifest (→ /manifest.webmanifest)
-│   ├── login/                # Login con passkey (WebAuthn)
+│   ├── login/                # "Continuar con Google"
 │   ├── (app)/                # Shell con BottomNav — pantallas principales
 │   │   ├── page.tsx          # 1. Dashboard: balance, pills, donut, recientes
 │   │   ├── loading.tsx       #    Skeleton — una por pantalla, ver abajo
@@ -39,38 +41,54 @@ src/
 │   │   │   └── loading.tsx
 │   │   ├── budget/           # 5. Presupuestos por categoría
 │   │   │   └── loading.tsx
-│   │   └── goals/            # 6. Metas de ahorro con abonos
+│   │   ├── goals/            # 6. Metas de ahorro con abonos
+│   │   │   └── loading.tsx
+│   │   └── profile/          # 7. Perfil: Gmail, Face ID, feedback, logout
 │   │       └── loading.tsx
 │   └── api/
-│       ├── auth/              # register/login options+verify, logout (WebAuthn)
-│       ├── sync/               # GET protegido con Bearer SYNC_SECRET (sync manual)
-│       ├── gmail-webhook/      # POST — recibe push de Gmail, dispara runSync()
-│       └── gmail-watch/renew/  # GET protegido con Bearer CRON_SECRET (cron diario)
+│       ├── auth/google/        # GET inicia OAuth; callback crea usuario+sesión
+│       ├── auth/…              # register/login options+verify (passkey del
+│       │                       #   app-lock), logout
+│       ├── sync/               # GET Bearer SYNC_SECRET — sincroniza a TODOS
+│       ├── gmail-webhook/      # POST — push de Gmail, sincroniza al dueño del buzón
+│       └── gmail-watch/renew/  # GET Bearer CRON_SECRET — renueva watch de todos
 ├── lib/
-│   ├── data.ts             # Lecturas (Supabase o mock si no hay env)
-│   ├── actions.ts          # Server actions de mutación (confirmar, crear…)
+│   ├── data.ts             # Lecturas, acotadas al usuario en sesión
+│   ├── actions.ts          # Server actions de mutación, acotadas al usuario
+│   ├── users.ts            # upsert desde Google, gmail_accounts, requireUserId()
+│   ├── google-oauth.ts     # Authorization code flow + verificación de id_token
+│   ├── crypto.ts           # AES-256-GCM para refresh tokens en la DB
 │   ├── schemas.ts          # Schemas Zod compartidos
-│   ├── sync.ts             # Pipeline Gmail → parser → Gemini → Supabase
+│   ├── sync.ts             # runSyncForUser / runSyncForGmailAddress / runSyncAll
 │   ├── qik-parser.ts       # Parser de correos Qik (puro, con tests)
-│   ├── gmail.ts             # Cliente Gmail REST (fetch + refresh token + watch)
+│   ├── gmail.ts             # Cliente Gmail REST (recibe refresh token por usuario)
 │   ├── gmail-webhook.ts     # Verificación del JWT de Pub/Sub push
 │   ├── gemini.ts             # Categorización con gemini-2.0-flash
 │   ├── supabase.ts           # Cliente admin (service role, solo servidor)
-│   ├── session.ts            # JWT de sesión con jose (corre en edge)
-│   ├── webauthn.ts           # Credenciales passkey en Supabase
-│   ├── webauthn-client.ts    # verifyPasskey() — /login y AppLockGate lo comparten
+│   ├── session.ts            # JWT de sesión (sub = user_id) con jose, corre en edge
+│   ├── webauthn.ts           # Passkeys por usuario (app-lock)
+│   ├── webauthn-client.ts    # verifyPasskey() — usado por LockScreen
 │   └── app-lock.ts           # Umbral de re-bloqueo (sessionStorage)
 ├── components/                # BottomNav, TxRow, Donut, PullToRefresh, Skeleton,
 │                               # AppLockGate + LockScreen (re-bloqueo con Face ID)
 supabase/
-├── migrations/0001_init.sql # Tablas + RLS
-└── seed.sql                 # Categorías por defecto
-public/sw.js                 # Service worker (network-first)
+├── migrations/0001_init.sql # Tablas base + RLS
+├── migrations/0002_...sql   # Soft delete de transacciones
+├── migrations/0003_...sql   # Multi-usuario: users, gmail_accounts, user_id, feedback
+└── seed.sql                 # Categorías por defecto (compartidas entre usuarios)
+public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
 ```
 
 ### Flujo de datos
 
+- **Multi-usuario**: cada fila de transactions/budgets/savings_goals/
+  webauthn_credentials tiene `user_id`. **Toda** lectura y mutación en
+  `data.ts`/`actions.ts` filtra por `requireUserId()` (el user_id del JWT
+  de sesión) — no hay RLS policies porque el único cliente es el servidor
+  con service role; el aislamiento entre usuarios vive en el código, así
+  que cualquier query nueva DEBE incluir el filtro de user_id. Las
+  categorías son compartidas (seed global, solo lectura).
 - **Lecturas**: server components → `lib/data.ts` → Supabase con service
   role key. Todas las páginas son `force-dynamic` (datos cambian a cada sync).
   Cada ruta tiene su `loading.tsx` (skeleton) — Next.js lo muestra
@@ -100,17 +118,22 @@ design/                      # Referencias visuales (no es código de la app)
   selecciona todas y precarga esa categoría de un tap — pensado para el
   caso de varias transacciones similares seguidas (p. ej. varios
   "PedidosYa" sugeridos como "Alimentación").
-- **Sync automático**: Gmail Push (Cloud Pub/Sub) notifica a
-  `POST /api/gmail-webhook` en cuanto llega un correo nuevo → `runSync()`.
-  La suscripción (`watchGmailMailbox`) expira a los 7 días máximo; se
-  renueva sola 1x/día vía el cron de `vercel.json` (`GET
-  /api/gmail-watch/renew`, Bearer `CRON_SECRET`). Ver § Gmail Push abajo
-  para la configuración (requiere pasos manuales en Google Cloud Console).
-- **Sync manual (fallback)**: botón "Sincronizar" (ícono refresh) y
-  pull-to-refresh de /transactions → server action `syncNow` → `runSync()`.
-  Útil si el webhook falla o mientras configuras Gmail Push por primera
-  vez. También existe `GET /api/sync` (Bearer `SYNC_SECRET`) para
-  dispararlo desde fuera (curl, atajos de iOS…).
+- **Sync automático**: los watches de Gmail de TODOS los usuarios publican
+  al mismo tópico de Cloud Pub/Sub. El push a `POST /api/gmail-webhook`
+  trae en su payload el `emailAddress` del buzón que cambió →
+  `runSyncForGmailAddress()` sincroniza solo a ese usuario. Cada watch
+  expira a los 7 días máximo; el cron diario de `vercel.json` (`GET
+  /api/gmail-watch/renew`, Bearer `CRON_SECRET`) los renueva todos. Al
+  vincular Gmail (callback de OAuth) el watch se activa de inmediato y se
+  corre el primer sync, sin esperar al cron.
+- **Sync manual (fallback)**: botón "Sincronizar" y pull-to-refresh de
+  /transactions → server action `syncNow` → `runSyncForUser(usuario en
+  sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
+  usuarios — para curl/atajos externos o backfills (`?days=N`).
+- **Tokens revocados**: si un usuario quita el acceso desde su cuenta de
+  Google, el refresh falla con `invalid_grant` → `GmailAuthError` →
+  `gmail_accounts.sync_enabled=false`. El dashboard y el perfil muestran
+  "reconectar Gmail" y los crons dejan de intentar con esa cuenta.
 
 ## Parser de correos Qik
 
@@ -223,9 +246,8 @@ Project Settings → Environment Variables.
 | `NEXT_PUBLIC_SUPABASE_URL` | URL del proyecto | Supabase → Settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Key pública (no se usa en runtime; RLS bloquea todo) | Supabase → Settings → API |
 | `SUPABASE_SERVICE_ROLE_KEY` | Key de servidor — **secreta** | Supabase → Settings → API |
-| `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` | OAuth2 client | Google Cloud Console (abajo) |
-| `GMAIL_REFRESH_TOKEN` | Token de larga vida | OAuth Playground (abajo) |
-| `GOOGLE_USER_EMAIL` | Cuenta Gmail que recibe los correos de Qik | harold3112@gmail.com |
+| `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` | OAuth2 client — login con Google Y lectura de Gmail | Google Cloud Console (abajo) |
+| `TOKEN_ENCRYPTION_KEY` | Cifra los refresh tokens de Gmail en la DB (AES-256-GCM) | `openssl rand -base64 32` |
 | `GMAIL_PUBSUB_TOPIC` | Tópico de Cloud Pub/Sub para Gmail Push | Google Cloud Console (§ Gmail Push) |
 | `GMAIL_WEBHOOK_AUDIENCE` | URL pública de /api/gmail-webhook, valida el JWT de Pub/Sub | Tu dominio de Vercel |
 | `GEMINI_API_KEY` | API key de Gemini | https://aistudio.google.com/apikey |
@@ -233,28 +255,39 @@ Project Settings → Environment Variables.
 | `CRON_SECRET` | Protege /api/gmail-watch/renew — **debe llamarse así**, Vercel lo inyecta automáticamente en sus crons | `openssl rand -hex 32` |
 | `SESSION_SECRET` | Firma la cookie JWT de sesión | `openssl rand -base64 32` |
 
-## Configurar Gmail API (OAuth2)
+## Configurar Google (login + Gmail multi-usuario)
+
+Un solo OAuth client sirve para todo: "Continuar con Google" (identidad) y
+el permiso `gmail.readonly` (importación de correos), pedidos en el mismo
+consent. Los refresh tokens de cada usuario se guardan cifrados en la
+tabla `gmail_accounts` — ya no hay token en env vars.
 
 1. En [Google Cloud Console](https://console.cloud.google.com) crea un
    proyecto ("peso") y habilita **Gmail API** (APIs & Services → Library).
-2. Configura la **OAuth consent screen**: tipo *External*, añade tu cuenta
-   (harold3112@gmail.com) como *test user*. Scope necesario:
+2. Configura la **OAuth consent screen**: tipo *External*. Scopes:
+   `openid`, `email`, `profile` y
    `https://www.googleapis.com/auth/gmail.readonly`.
-3. Crea credenciales **OAuth client ID** tipo *Web application* y agrega
-   `https://developers.google.com/oauthplayground` como redirect URI
-   autorizado. Guarda el Client ID y Client Secret.
-4. Obtén el refresh token en el [OAuth Playground](https://developers.google.com/oauthplayground):
-   - ⚙️ → marca *Use your own OAuth credentials* y pega tu client ID/secret.
-   - En Step 1 escribe el scope `https://www.googleapis.com/auth/gmail.readonly`
-     y autoriza con harold3112@gmail.com.
-   - En Step 2 pulsa *Exchange authorization code for tokens* y copia el
-     **Refresh token**.
-5. Rellena `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` y `GMAIL_REFRESH_TOKEN`.
+3. Crea credenciales **OAuth client ID** tipo *Web application* con estos
+   **redirect URIs autorizados** (los dos):
+   - `https://tu-dominio.vercel.app/api/auth/google/callback`
+   - `http://localhost:3000/api/auth/google/callback` (para dev local)
+4. Rellena `GMAIL_CLIENT_ID` y `GMAIL_CLIENT_SECRET`.
+5. **Publica la app** (OAuth consent screen → Publishing status →
+   **In production**). Crítico: en modo "Testing" los refresh tokens
+   expiran a los 7 días y el auto-sync de todos moriría semanalmente.
 
-> La app queda en modo "Testing" en Google: los refresh tokens de test users
-> expiran a los 7 días **salvo** que publiques la app (Publishing status →
-> In production). Publícala aunque no la verifiques: para gmail.readonly con
-> tu propia cuenta funciona y el token no expira.
+**Restricciones de Google al operar sin verificación formal** (verificar
+`gmail.readonly` requiere una auditoría de seguridad anual — no tiene
+sentido para una app de amigos):
+
+- Cada usuario nuevo ve una pantalla **"Google no ha verificado esta app"**
+  y debe tocar *Avanzado → Ir a peso (no seguro)* para continuar. Avísales
+  a tus amigos que esa pantalla es esperada.
+- El checkbox de "leer tu correo" en el consent es **opcional** — si
+  alguien lo desmarca, su cuenta se crea igual en modo manual y puede
+  vincular Gmail después desde /profile.
+- **Tope de 100 usuarios de por vida** del proyecto (no se resetea).
+  De sobra para amigos; si algún día se supera, tocaría verificación formal.
 
 ## Configurar Gmail Push (sync automático en tiempo real)
 
@@ -319,20 +352,19 @@ salvo que cambies el modelo de acceso.
 
 ## Passkeys (Face ID)
 
-No se usa Supabase Auth: Supabase no soporta passkeys como método primario.
-En su lugar:
+Con multi-usuario, el passkey **ya no es el login** (eso es "Continuar con
+Google") — es el **bloqueo opcional con Face ID** de cada usuario:
 
-- `@simplewebauthn/server` genera/verifica los challenges (rutas en
-  `src/app/api/auth/`); las credenciales se guardan en la tabla
-  `webauthn_credentials`.
-- Al verificar, se emite un JWT (jose, HS256 con `SESSION_SECRET`) en la
-  cookie httpOnly `peso_session` (30 días). El middleware la valida en edge.
-- **Primer uso**: si no existe ningún passkey, el botón de login crea uno
-  (registro abierto solo mientras la tabla está vacía; después, añadir otro
-  dispositivo requiere sesión activa).
+- Se activa desde /profile ("Activar Face ID"): registra un passkey del
+  dispositivo ligado al `user_id` en `webauthn_credentials`.
+- Las rutas `api/auth/register|login/*` requieren sesión activa; el
+  "login/verify" del passkey no inicia sesión — la **renueva** (30 días
+  más) para el mismo usuario tras verificar su identidad.
+- La sesión es un JWT (jose, HS256 con `SESSION_SECRET`, `sub` = user_id)
+  en la cookie httpOnly `peso_session`, emitida por el callback de Google.
+  El middleware la valida en edge.
 - WebAuthn exige HTTPS o localhost. El RP ID se deriva del host de la
-  request, así que funciona igual en localhost y en el dominio de Vercel —
-  pero los passkeys registrados en un dominio no sirven en otro.
+  request — los passkeys registrados en un dominio no sirven en otro.
 - En iPhone Safari, el flujo dispara Face ID automáticamente.
 
 ### Re-bloqueo automático (app lock)
@@ -355,12 +387,12 @@ mismo flujo WebAuthn que `/login` (`verifyPasskey()` en
 `src/lib/webauthn-client.ts`) — la re-verificación también refresca el JWT
 de sesión, así que renueva los 30 días sin fricción extra.
 
-`AppLockGate` recibe `enabled={isSupabaseConfigured()}` desde el layout
-server-side de `(app)`: en modo demo (sin Supabase) no hay passkeys que
-verificar, así que nunca bloquea. `sessionStorage` (no `localStorage`) es
-intencional: se limpia solo cuando el proceso muere, que es justo la señal
-de "cerraron la PWA de verdad" que activa el bloqueo por el `useState(false)`
-inicial del gate.
+`AppLockGate` recibe `enabled` desde el layout server-side de `(app)`:
+solo es `true` si el usuario en sesión tiene passkeys registrados — sin
+passkey no hay nada que verificar y la app no bloquea (ni en modo demo).
+`sessionStorage` (no `localStorage`) es intencional: se limpia solo cuando
+el proceso muere, que es justo la señal de "cerraron la PWA de verdad" que
+activa el bloqueo por el `useState(false)` inicial del gate.
 
 ## Decisiones técnicas
 
@@ -369,18 +401,29 @@ inicial del gate.
 - **Gemini vía REST con fallo suave**: si Gemini falla o inventa una
   categoría, la transacción se guarda sin sugerencia — el sync nunca se cae
   por la IA. Respuesta forzada a JSON (`responseMimeType`) y validada con Zod.
-- **Service role en el servidor + RLS cerrado** en vez de anon key + policies:
-  app de un usuario, sin acceso directo desde el browser a Supabase.
+- **Service role en el servidor + RLS cerrado** en vez de anon key +
+  policies: el browser nunca toca Supabase directo; el aislamiento entre
+  usuarios se aplica en código (`requireUserId()` en cada query). Si algún
+  día hubiera acceso directo desde el cliente, habría que migrar a RLS
+  policies por `user_id`.
+- **Login con Google en vez de passkeys/magic links**: los usuarios van a
+  vincular su Gmail de todos modos — un solo consent da identidad +
+  permiso de lectura, cero fricción para amigos no técnicos. El passkey
+  quedó como bloqueo local opcional (Face ID).
+- **Refresh tokens cifrados en la DB** (AES-256-GCM, `lib/crypto.ts`):
+  un refresh token da lectura del correo completo de esa persona — en
+  texto plano, un dump de la DB sería un desastre. La clave vive solo en
+  `TOKEN_ENCRYPTION_KEY` (env del servidor).
 - **Datos mock automáticos** sin env vars: permite desarrollo de UI y QA
   visual sin credenciales.
 - **Gmail Push en vez de polling.** Un cron de Vercel cada pocos minutos
   requiere plan Pro; sondear Gmail a cada rato además desperdicia quota de
-  API para una sola cuenta. Gmail Push (Cloud Pub/Sub) notifica en
-  segundos y el único cron que corre es 1x/día (gratis en Hobby) para
-  renovar la suscripción. El costo es configuración manual en Google
-  Cloud Console (topic + IAM + subscription) — ver § Gmail Push. El sync
-  manual (botón, pull-to-refresh, `GET /api/sync`) queda como respaldo si
-  el webhook falla o mientras configuras todo por primera vez.
+  API. Gmail Push (Cloud Pub/Sub) notifica en segundos y el único cron que
+  corre es 1x/día (gratis en Hobby) para renovar los watches de todos los
+  usuarios. El costo es configuración manual en Google Cloud Console
+  (topic + IAM + subscription) — ver § Gmail Push. El sync manual (botón,
+  pull-to-refresh, `GET /api/sync`) queda como respaldo si el webhook
+  falla o mientras configuras todo por primera vez.
 - **`loading.tsx` por ruta en vez de spinners manuales.** Next.js App
   Router activa el archivo `loading.tsx` de cada segmento automáticamente
   vía Suspense mientras el server component espera datos — no hay que
@@ -412,4 +455,20 @@ inicial del gate.
 3. Si vas a usar Gmail Push, sigue § Gmail Push arriba **después** del
    primer deploy (necesitas la URL real de producción para el webhook).
 4. QA en iPhone: abre el dominio en Safari → Compartir → *Agregar a inicio*.
-   Verifica Face ID en el login, instalación standalone y safe areas.
+   Verifica el login con Google, instalación standalone y safe areas.
+
+## Invitar amigos
+
+No hay registro cerrado ni lista de invitados: cualquiera con el link
+puede crear cuenta (hasta el tope de 100 usuarios de Google, ver
+§ Configurar Google). Para invitar a alguien basta con:
+
+1. Compartirle `https://tu-dominio.vercel.app`.
+2. Avisarle que la pantalla "Google no ha verificado esta app" es normal —
+   debe tocar *Avanzado → Continuar*.
+3. Si usa Qik, que deje marcado el checkbox de lectura de correo en el
+   consent; si no usa Qik, puede desmarcarlo y registrar gastos a mano.
+4. Que instale la PWA (instrucciones dentro de la app, en /profile).
+
+El feedback que envíen desde /profile queda en la tabla `feedback` de
+Supabase (Table Editor → feedback) con su user_id y fecha.
