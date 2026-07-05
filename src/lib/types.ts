@@ -48,8 +48,8 @@ export interface SavingsGoal {
   created_at: string;
 }
 
-/** Resultado del parser de correos Qik, previo a insertar en la base de datos. */
-export interface ParsedQikEmail {
+/** Resultado de un parser de correo bancario, previo a insertar en la DB. */
+export interface ParsedBankEmail {
   type: TransactionType;
   merchant: string;
   amount: number;
@@ -58,3 +58,6 @@ export interface ParsedQikEmail {
   card_last4: string | null;
   available_balance: number | null;
 }
+
+/** @deprecated usa ParsedBankEmail — alias del tipo original de Qik. */
+export type ParsedQikEmail = ParsedBankEmail;

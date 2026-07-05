@@ -60,7 +60,10 @@ src/
 │   ├── crypto.ts           # AES-256-GCM para refresh tokens en la DB
 │   ├── schemas.ts          # Schemas Zod compartidos
 │   ├── sync.ts             # runSyncForUser / runSyncForGmailAddress / runSyncAll
-│   ├── qik-parser.ts       # Parser de correos Qik (puro, con tests)
+│   ├── bank-parser.ts      # Registro de bancos: remitentes + dispatcher por From
+│   ├── qik-parser.ts       # Parser Qik (5 tipos; exporta htmlToText compartido)
+│   ├── popular-parser.ts   # Parser Banco Popular (6 tipos, tablas columnares)
+│   ├── caribe-parser.ts    # Parser Banco Caribe (1 tipo confirmado, multi-moneda)
 │   ├── gmail.ts             # Cliente Gmail REST (recibe refresh token por usuario)
 │   ├── gmail-webhook.ts     # Verificación del JWT de Pub/Sub push
 │   ├── gemini.ts             # Categorización con gemini-2.0-flash
@@ -135,7 +138,25 @@ design/                      # Referencias visuales (no es código de la app)
   `gmail_accounts.sync_enabled=false`. El dashboard y el perfil muestran
   "reconectar Gmail" y los crons dejan de intentar con esa cuenta.
 
-## Parser de correos Qik
+## Parsers de correos bancarios
+
+`bank-parser.ts` es el registro de bancos soportados: cada banco define
+sus remitentes, su `parse()` y su `isIgnorable()`. El filtro de búsqueda
+en Gmail se arma con TODOS los remitentes del registro — un remitente que
+no esté ahí nunca se sincroniza. **Para agregar un banco: consigue 2+
+correos reales (no adivines el formato — falló dos veces con Qik), crea su
+`<banco>-parser.ts` con fixtures en tests, y regístralo.**
+
+Bancos soportados (2026-07-05): **Qik** (5 tipos), **Banco Popular**
+(6 tipos — remitente `notificaciones@popularenlinea.com`, tablas
+COLUMNARES: etiquetas primero y valores después, fechas en D/M/YYYY,
+D/M/YY y YYYYMMDD según el tipo, montos `RD$`/`RD $`/`RD` a secas) y
+**Banco Caribe** (1 tipo confirmado — `notificaciones@bancocaribe.com.do`,
+campos inline, monto SIN prefijo con la moneda en campo aparte — puede ser
+USD — y fecha/hora con espacios: `24 / 06 / 2026`, `12 : 25 : 56`).
+El detalle de cada formato vive como doc comment en su parser.
+
+### Qik
 
 Qik notifica transacciones desde **dos remitentes distintos**:
 

@@ -1,6 +1,6 @@
 import "server-only";
-import { GmailAuthError, fetchQikEmails } from "./gmail";
-import { isIgnorableQikEmail, parseQikEmail } from "./qik-parser";
+import { GmailAuthError, fetchBankEmails } from "./gmail";
+import { isIgnorableBankEmail, parseBankEmail } from "./bank-parser";
 import { suggestCategory } from "./gemini";
 import { getSupabaseAdmin } from "./supabase";
 import { decryptToken } from "./crypto";
@@ -47,7 +47,7 @@ export async function runSyncForUser(userId: string, newerThanDays?: number): Pr
 
   let emails;
   try {
-    emails = await fetchQikEmails(decryptToken(account.refresh_token_enc), newerThanDays);
+    emails = await fetchBankEmails(decryptToken(account.refresh_token_enc), newerThanDays);
   } catch (err) {
     if (err instanceof GmailAuthError) {
       await supabase.from("gmail_accounts").update({ sync_enabled: false }).eq("user_id", userId);
@@ -81,11 +81,11 @@ export async function runSyncForUser(userId: string, newerThanDays?: number): Pr
 
   let synced = 0;
   for (const email of newEmails) {
-    const parsed = parseQikEmail(email.subject, email.body);
+    const parsed = parseBankEmail(email.from, email.subject, email.body);
     if (!parsed) {
       // Estados de cuenta, códigos CASH creados/vencidos, etc.: no son
       // transacciones y no representan un error de parseo.
-      if (!isIgnorableQikEmail(email.subject, email.body)) {
+      if (!isIgnorableBankEmail(email.from, email.subject, email.body)) {
         errors.push(`No se pudo parsear el correo ${email.id} ("${email.subject}")`);
       }
       continue;

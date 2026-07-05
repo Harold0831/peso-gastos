@@ -15,18 +15,12 @@ export class GmailAuthError extends Error {
   }
 }
 
-// Qik notifica transacciones desde DOS remitentes distintos, no uno:
-//   - no-reply-qik@qik.com.do   → pagos de servicio, retiros CASH, Toke
-//   - notificaciones@qik.do     → compras con tarjeta débito/crédito
-//     (dominio "qik.do", sin el ".com" — fácil de confundir con el de
-//     arriba; un filtro que solo busque qik.com.do nunca los encuentra)
-// ayuda@qik.com.do NO es remitente — es la dirección de soporte que Qik
-// menciona en el pie de página de sus correos. Las promociones vienen de
-// promociones@mail.qik.com.do y quedan excluidas al no estar en esta lista.
-const QIK_SENDERS = ["no-reply-qik@qik.com.do", "notificaciones@qik.do"];
+import { BANK_SENDERS } from "./bank-parser";
 
 export interface GmailMessage {
   id: string;
+  /** Dirección del remitente en minúsculas (sin display name). */
+  from: string;
   subject: string;
   body: string;
   snippet: string;
@@ -133,19 +127,20 @@ async function mapWithConcurrency<T, R>(
 }
 
 /**
- * Lista los correos de Qik de los últimos `newerThanDays` días y devuelve
- * id, asunto y cuerpo decodificado de cada uno. Pagina si hay más de 100
- * resultados y limita la concurrencia al pedir el detalle de cada uno —
- * la API de Gmail rechaza con 429 ("too many concurrent requests") si se
- * disparan todas las peticiones a la vez, algo que solo se nota con
- * ventanas largas (backfills) ya que el día a día trae pocos correos.
+ * Lista los correos de los bancos soportados (ver bank-parser.ts) de los
+ * últimos `newerThanDays` días y devuelve remitente, asunto y cuerpo
+ * decodificado de cada uno. Pagina si hay más de 100 resultados y limita
+ * la concurrencia al pedir el detalle de cada uno — la API de Gmail
+ * rechaza con 429 ("too many concurrent requests") si se disparan todas
+ * las peticiones a la vez, algo que solo se nota con ventanas largas
+ * (backfills) ya que el día a día trae pocos correos.
  */
-export async function fetchQikEmails(
+export async function fetchBankEmails(
   refreshToken: string,
   newerThanDays = 7,
 ): Promise<GmailMessage[]> {
   const accessToken = await getAccessToken(refreshToken);
-  const fromClause = QIK_SENDERS.map((s) => `from:${s}`).join(" OR ");
+  const fromClause = BANK_SENDERS.map((s) => `from:${s}`).join(" OR ");
   const query = encodeURIComponent(`(${fromClause}) newer_than:${newerThanDays}d`);
 
   const ids: string[] = [];
@@ -166,11 +161,15 @@ export async function fetchQikEmails(
       payload: MessagePart & { headers?: { name: string; value: string }[] };
     }>(`/messages/${id}?format=full`, accessToken);
 
-    const subject =
-      msg.payload.headers?.find((h) => h.name.toLowerCase() === "subject")?.value ?? "";
+    const header = (name: string) =>
+      msg.payload.headers?.find((h) => h.name.toLowerCase() === name)?.value ?? "";
+    const fromRaw = header("from");
+    // "Nombre <correo@x.com>" → "correo@x.com"
+    const from = (fromRaw.match(/<([^>]+)>/)?.[1] ?? fromRaw).trim().toLowerCase();
     return {
       id: msg.id,
-      subject,
+      from,
+      subject: header("subject"),
       body: extractBody(msg.payload),
       snippet: msg.snippet,
     };
