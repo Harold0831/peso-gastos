@@ -24,6 +24,9 @@ export interface GmailMessage {
   subject: string;
   body: string;
   snippet: string;
+  /** Cuándo llegó el correo — fallback de fecha para bancos cuyo cuerpo
+   *  trae hora pero no fecha (Scotiabank). */
+  receivedAt: Date;
 }
 
 async function getAccessToken(refreshToken: string): Promise<string> {
@@ -158,6 +161,7 @@ export async function fetchBankEmails(
     const msg = await gmailFetch<{
       id: string;
       snippet: string;
+      internalDate: string;
       payload: MessagePart & { headers?: { name: string; value: string }[] };
     }>(`/messages/${id}?format=full`, accessToken);
 
@@ -172,6 +176,7 @@ export async function fetchBankEmails(
       subject: header("subject"),
       body: extractBody(msg.payload),
       snippet: msg.snippet,
+      receivedAt: new Date(Number(msg.internalDate)),
     };
   });
 }

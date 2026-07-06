@@ -32,27 +32,34 @@ export function redirectUri(origin: string): string {
   return `${origin}/api/auth/google/callback`;
 }
 
-/** URL de autorización de Google. `state` debe validarse en el callback (CSRF). */
+/**
+ * URL de autorización de Google. `state` debe validarse en el callback (CSRF).
+ *
+ * `forceConsent` controla la fricción del login: sin él, Google NO vuelve
+ * a mostrar la pantalla de permisos a quien ya autorizó (login de 1 tap),
+ * pero tampoco emite refresh_token. Con él, muestra el consent completo y
+ * SÍ emite refresh_token. Solo se fuerza cuando hace falta el token:
+ * vincular/reconectar Gmail desde /profile, o cuando el callback detecta
+ * un primer login con permiso de Gmail concedido pero sin refresh_token
+ * guardado. Forzarlo siempre (bug original) hacía que cada login pidiera
+ * todos los permisos de nuevo.
+ */
 export function buildAuthUrl(
   origin: string,
   state: string,
-  options?: { gmailOnly?: boolean },
+  options?: { forceConsent?: boolean },
 ): string {
   const { clientId } = getClient();
-  const scopes = options?.gmailOnly
-    ? [...IDENTITY_SCOPES, GMAIL_SCOPE] // re-consent para vincular Gmail después
-    : [...IDENTITY_SCOPES, GMAIL_SCOPE];
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri(origin),
     response_type: "code",
-    scope: scopes.join(" "),
-    // offline + consent: garantiza refresh_token en cada autorización
+    scope: [...IDENTITY_SCOPES, GMAIL_SCOPE].join(" "),
     access_type: "offline",
-    prompt: "consent",
     include_granted_scopes: "true",
     state,
   });
+  if (options?.forceConsent) params.set("prompt", "consent");
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
 

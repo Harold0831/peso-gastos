@@ -74,8 +74,9 @@ function extractCardLast4(body: string): string | null {
  * etiquetas (cada línea TERMINA con la etiqueta — a veces la primera viene
  * pegada a la frase anterior, p. ej. "…detalle de la transacción: Monto")
  * y devuelve las N líneas siguientes como valores, en el mismo orden.
+ * Exportada porque BHD usa el mismo patrón de tabla en sus correos.
  */
-function zipColumns(body: string, labels: string[]): Map<string, string> | null {
+export function zipColumns(body: string, labels: string[]): Map<string, string> | null {
   const lines = body
     .split("\n")
     .map((l) => l.trim())

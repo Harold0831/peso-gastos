@@ -3,6 +3,7 @@ import { getBudgetsForMonth, getMonthSummary, getPendingCount, getTransactions }
 import { formatMoney, formatMonthLabel, merchantInitials } from "@/lib/format";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { getGmailStatus, getUserById, requireUserId, type GmailStatus } from "@/lib/users";
+import { getCredentialsForUser } from "@/lib/webauthn";
 import { Donut } from "@/components/donut";
 import { TxRow } from "@/components/tx-row";
 import { BellIcon, ChevronIcon, WalletIcon } from "@/components/icons";
@@ -27,11 +28,17 @@ export default async function DashboardPage() {
 
   let displayName = "Demo";
   let gmail: GmailStatus = { linked: true, email: null, syncEnabled: true };
+  let hasPasskey = true; // en demo no se muestra el banner de Face ID
   if (isSupabaseConfigured()) {
     const userId = await requireUserId();
-    const [user, gmailStatus] = await Promise.all([getUserById(userId), getGmailStatus(userId)]);
+    const [user, gmailStatus, credentials] = await Promise.all([
+      getUserById(userId),
+      getGmailStatus(userId),
+      getCredentialsForUser(userId),
+    ]);
     displayName = user?.name?.split(" ")[0] ?? user?.email ?? "Usuario";
     gmail = gmailStatus;
+    hasPasskey = credentials.length > 0;
   }
 
   const [summary, pendingCount, recent, budgets] = await Promise.all([
@@ -136,6 +143,27 @@ export default async function DashboardPage() {
               {gmail.linked
                 ? "Reconéctalo para que el sync siga funcionando · Toca aquí"
                 : "Peso registra solo tus movimientos de Qik · Toca para configurar"}
+            </span>
+          </span>
+          <ChevronIcon className="text-ink-muted" />
+        </Link>
+      )}
+
+      {/* Activar Face ID (solo si Gmail ya está resuelto, un banner a la vez) */}
+      {gmail.linked && gmail.syncEnabled && !hasPasskey && (
+        <Link
+          href="/profile"
+          className="mt-3.5 flex items-center gap-3 rounded-[14px] border border-accent/30 bg-accent/5 px-4 py-3"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-accent/10 text-base">
+            🔒
+          </span>
+          <span className="flex-1">
+            <span className="block text-[13px] font-semibold text-ink">
+              Protege tu app con Face ID
+            </span>
+            <span className="block text-[11px] text-ink-muted">
+              Pide tu identidad al abrir la app · Actívalo en tu perfil
             </span>
           </span>
           <ChevronIcon className="text-ink-muted" />

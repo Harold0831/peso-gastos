@@ -121,7 +121,7 @@ export function ProfileClient({
               </p>
             </div>
             <a
-              href="/api/auth/google"
+              href="/api/auth/google?consent=1"
               className="mt-3 block w-full rounded-btn bg-accent py-3 text-center text-[13px] font-bold text-white"
             >
               Reconectar Gmail
@@ -134,7 +134,7 @@ export function ProfileClient({
               esto, puedes registrar todo a mano con el botón +.
             </p>
             <a
-              href="/api/auth/google"
+              href="/api/auth/google?consent=1"
               className="mt-3 block w-full rounded-btn bg-accent py-3 text-center text-[13px] font-bold text-white"
             >
               Vincular Gmail

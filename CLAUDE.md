@@ -64,6 +64,8 @@ src/
 │   ├── qik-parser.ts       # Parser Qik (5 tipos; exporta htmlToText compartido)
 │   ├── popular-parser.ts   # Parser Banco Popular (6 tipos, tablas columnares)
 │   ├── caribe-parser.ts    # Parser Banco Caribe (1 tipo confirmado, multi-moneda)
+│   ├── scotiabank-parser.ts # Parser Scotiabank (5 tipos; fecha del receivedAt)
+│   ├── bhd-parser.ts       # Parser BHD (2 tipos; ignora estados "en proceso")
 │   ├── gmail.ts             # Cliente Gmail REST (recibe refresh token por usuario)
 │   ├── gmail-webhook.ts     # Verificación del JWT de Pub/Sub push
 │   ├── gemini.ts             # Categorización con gemini-2.0-flash
@@ -150,11 +152,17 @@ correos reales (no adivines el formato — falló dos veces con Qik), crea su
 Bancos soportados (2026-07-05): **Qik** (5 tipos), **Banco Popular**
 (6 tipos — remitente `notificaciones@popularenlinea.com`, tablas
 COLUMNARES: etiquetas primero y valores después, fechas en D/M/YYYY,
-D/M/YY y YYYYMMDD según el tipo, montos `RD$`/`RD $`/`RD` a secas) y
+D/M/YY y YYYYMMDD según el tipo, montos `RD$`/`RD $`/`RD` a secas),
 **Banco Caribe** (1 tipo confirmado — `notificaciones@bancocaribe.com.do`,
 campos inline, monto SIN prefijo con la moneda en campo aparte — puede ser
-USD — y fecha/hora con espacios: `24 / 06 / 2026`, `12 : 25 : 56`).
-El detalle de cada formato vive como doc comment en su parser.
+USD — y fecha/hora con espacios: `24 / 06 / 2026`, `12 : 25 : 56`),
+**Scotiabank** (5 tipos — `alertas@scotiabank.com`, prosa sin tabla;
+**el cuerpo trae hora pero NO fecha** — la fecha sale del `receivedAt` del
+correo, por eso los parsers reciben ese parámetro) y **BHD** (2 tipos —
+`alertas@bhd.com.do`; "Pagos al Instante en Proceso" de
+`notificaciones@bhd.com.do` se ignora a propósito: es un estado intermedio
+que duplicaría la transferencia final). El detalle de cada formato vive
+como doc comment en su parser.
 
 ### Qik
 

@@ -81,7 +81,7 @@ export async function runSyncForUser(userId: string, newerThanDays?: number): Pr
 
   let synced = 0;
   for (const email of newEmails) {
-    const parsed = parseBankEmail(email.from, email.subject, email.body);
+    const parsed = parseBankEmail(email.from, email.subject, email.body, email.receivedAt);
     if (!parsed) {
       // Estados de cuenta, códigos CASH creados/vencidos, etc.: no son
       // transacciones y no representan un error de parseo.

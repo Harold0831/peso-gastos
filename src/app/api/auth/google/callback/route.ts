@@ -40,6 +40,28 @@ export async function GET(request: NextRequest) {
     const identity = await verifyIdToken(tokens.id_token);
     const user = await upsertUserFromGoogle(identity);
 
+    // Permiso de Gmail concedido pero sin refresh_token (login sin prompt de
+    // consent) y sin cuenta vinculada aún: reintenta UNA vez forzando el
+    // consent para obtenerlo. Si el usuario ya tiene su gmail_account, no
+    // hace falta — el token guardado sigue siendo válido.
+    if (!tokens.refresh_token && hasGmailScope(tokens.scope)) {
+      const { data: existing } = await getSupabaseAdmin()
+        .from("gmail_accounts")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!existing) {
+        const response = NextResponse.redirect(`${origin}/api/auth/google?consent=1`);
+        response.cookies.set(
+          SESSION_COOKIE,
+          await createSessionToken(user.id),
+          sessionCookieOptions,
+        );
+        response.cookies.delete(OAUTH_STATE_COOKIE);
+        return response;
+      }
+    }
+
     if (tokens.refresh_token && hasGmailScope(tokens.scope)) {
       await saveGmailAccount(user.id, identity.email, tokens.refresh_token);
 
