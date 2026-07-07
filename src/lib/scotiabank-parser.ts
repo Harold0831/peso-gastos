@@ -1,4 +1,4 @@
-import type { ParsedBankEmail } from "./types";
+import type { Currency, ParsedBankEmail } from "./types";
 import { htmlToText } from "./qik-parser";
 
 /**
@@ -49,7 +49,7 @@ function buildDate(body: string, receivedAt: Date): Date {
   );
 }
 
-function currencyOf(body: string): string {
+function currencyOf(body: string): Currency {
   return /\$[\d,.]+\s*USD/i.test(body) ? "USD" : "DOP";
 }
 

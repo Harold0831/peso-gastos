@@ -2,6 +2,7 @@ import "server-only";
 import { endOfMonth, startOfMonth } from "date-fns";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
 import { requireUserId } from "./users";
+import { getLatestCachedRate } from "./exchange-rate";
 import { MOCK_BUDGETS, MOCK_CATEGORIES, MOCK_GOALS, MOCK_TRANSACTIONS } from "./mock-data";
 import type { Budget, Category, SavingsGoal, Transaction } from "./types";
 
@@ -33,6 +34,20 @@ function monthRange(month: Date): { from: string; to: string } {
     from: startOfMonth(month).toISOString(),
     to: endOfMonth(month).toISOString(),
   };
+}
+
+/**
+ * Convertidor de montos a RD$ para totales y gráficas. Las transacciones
+ * en moneda extranjera usan la tasa estampada al sincronizarlas
+ * (exchange_rate); las históricas sin tasa (pre-migración 0004) caen a la
+ * última tasa cacheada — ese query solo se hace si de verdad hace falta.
+ * Último recurso (sin tasa alguna): el monto se suma tal cual, el
+ * comportamiento previo a multi-moneda.
+ */
+async function dopConverter(rows: Transaction[]): Promise<(t: Transaction) => number> {
+  const needsFallback = rows.some((t) => t.currency !== "DOP" && t.exchange_rate === null);
+  const fallback = needsFallback ? await getLatestCachedRate() : null;
+  return (t) => (t.currency === "DOP" ? t.amount : t.amount * (t.exchange_rate ?? fallback ?? 1));
 }
 
 export async function getTransactions(options?: {
@@ -98,8 +113,9 @@ export async function getPendingCount(): Promise<number> {
 
 export async function getMonthSummary(month: Date): Promise<MonthSummary> {
   const rows = await getTransactions({ month });
-  const income = rows.filter((t) => t.type === "income").reduce((s, t) => s + t.amount, 0);
-  const expenses = rows.filter((t) => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+  const toDop = await dopConverter(rows);
+  const income = rows.filter((t) => t.type === "income").reduce((s, t) => s + toDop(t), 0);
+  const expenses = rows.filter((t) => t.type === "expense").reduce((s, t) => s + toDop(t), 0);
   return { income, expenses, net: income - expenses };
 }
 
@@ -131,13 +147,14 @@ export async function getBudgetsForMonth(month: Date): Promise<BudgetWithSpend[]
   }
 
   const byId = new Map(categories.map((c) => [c.id, c]));
+  const toDop = await dopConverter(transactions);
   return budgets
     .map((budget) => {
       const category = byId.get(budget.category_id);
       if (!category) return null;
       const spent = transactions
         .filter((t) => t.type === "expense" && t.category === category.name)
-        .reduce((s, t) => s + t.amount, 0);
+        .reduce((s, t) => s + toDop(t), 0);
       return { budget, category, spent };
     })
     .filter((b): b is BudgetWithSpend => b !== null);
@@ -165,10 +182,11 @@ export async function getCategorySpend(month: Date): Promise<CategorySpend[]> {
     getTransactions({ month }),
   ]);
   const totals = new Map<string, number>();
+  const toDop = await dopConverter(transactions);
   for (const t of transactions) {
     if (t.type !== "expense") continue;
     const name = t.category ?? t.ai_suggested_category ?? "Otros";
-    totals.set(name, (totals.get(name) ?? 0) + t.amount);
+    totals.set(name, (totals.get(name) ?? 0) + toDop(t));
   }
   const byName = new Map(categories.map((c) => [c.name, c]));
   const fallback = (name: string): Category => ({
@@ -188,9 +206,10 @@ export async function getDailyExpenses(month: Date): Promise<number[]> {
   const transactions = await getTransactions({ month });
   const days = endOfMonth(month).getDate();
   const result = new Array<number>(days).fill(0);
+  const toDop = await dopConverter(transactions);
   for (const t of transactions) {
     if (t.type !== "expense") continue;
-    result[new Date(t.date).getDate() - 1] += t.amount;
+    result[new Date(t.date).getDate() - 1] += toDop(t);
   }
   return result;
 }
@@ -201,6 +220,7 @@ function normalizeTransaction(row: Record<string, unknown>): Transaction {
   return {
     ...t,
     amount: Number(t.amount),
+    exchange_rate: t.exchange_rate === null ? null : Number(t.exchange_rate),
     available_balance: t.available_balance === null ? null : Number(t.available_balance),
   };
 }

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Transaction } from "@/lib/types";
-import { formatFullDate, formatTime } from "@/lib/format";
+import { currencySymbol, formatFullDate, formatMoney, formatTime } from "@/lib/format";
 import { confirmTransaction, deleteTransaction } from "@/lib/actions";
 import { BackIcon } from "@/components/icons";
 
@@ -21,6 +21,8 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
 
   const date = new Date(tx.date);
   const isExpense = tx.type === "expense";
+  const symbol = currencySymbol(tx.currency);
+  const isForeign = tx.currency !== "DOP";
 
   // Pone la sugerencia de la IA de primera en las pills
   const orderedCategories = suggested
@@ -84,7 +86,7 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
         </div>
         {editingAmount ? (
           <div className="flex items-baseline justify-center gap-1.5">
-            <span className="text-base font-bold text-ink-muted">RD$</span>
+            <span className="text-base font-bold text-ink-muted">{symbol}</span>
             <input
               type="number"
               inputMode="decimal"
@@ -98,7 +100,7 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
           </div>
         ) : (
           <div className="flex items-baseline justify-center gap-1.5">
-            <span className="text-base font-bold text-ink-muted">RD$</span>
+            <span className="text-base font-bold text-ink-muted">{symbol}</span>
             <span
               className={`text-[44px] font-extrabold leading-none tracking-tighter ${
                 isExpense ? "text-expense" : "text-income"
@@ -109,6 +111,12 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
                 maximumFractionDigits: 2,
               })}
             </span>
+          </div>
+        )}
+        {isForeign && tx.exchange_rate !== null && (
+          <div className="mt-2 text-[13px] font-medium text-ink-muted">
+            ≈ {formatMoney(Number(amount) * tx.exchange_rate)} · tasa del día{" "}
+            {tx.exchange_rate.toFixed(2)}
           </div>
         )}
         <div className="mt-2.5 text-sm font-medium text-ink-muted">{tx.merchant}</div>

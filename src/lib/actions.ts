@@ -9,6 +9,7 @@ import {
   bulkConfirmSchema,
   confirmSchema,
   contributionSchema,
+  enabledBanksSchema,
   goalSchema,
   transactionSchema,
 } from "./schemas";
@@ -104,6 +105,14 @@ export async function createTransaction(input: unknown): Promise<ActionResult> {
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
 
+  // Monto en USD: estampa la tasa del día para que los totales en RD$
+  // la usen. Fallo suave (null) — data.ts cae a la última tasa cacheada.
+  let exchangeRate: number | null = null;
+  if (parsed.data.currency !== "DOP") {
+    const { getUsdToDopRate } = await import("./exchange-rate");
+    exchangeRate = await getUsdToDopRate();
+  }
+
   const { error } = await getSupabaseAdmin()
     .from("transactions")
     .insert({
@@ -111,6 +120,8 @@ export async function createTransaction(input: unknown): Promise<ActionResult> {
       type: parsed.data.type,
       merchant: parsed.data.merchant,
       amount: parsed.data.amount,
+      currency: parsed.data.currency,
+      exchange_rate: exchangeRate,
       date: new Date(parsed.data.date).toISOString(),
       category: parsed.data.category,
       notes: parsed.data.notes || null,
@@ -119,6 +130,22 @@ export async function createTransaction(input: unknown): Promise<ActionResult> {
   if (error) return { ok: false, error: error.message };
 
   revalidateAll();
+  return { ok: true };
+}
+
+/** Guarda qué bancos sincronizar desde Gmail (perfil → "Mis bancos"). */
+export async function setEnabledBanks(input: unknown): Promise<ActionResult> {
+  const parsed = enabledBanksSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("gmail_accounts")
+    .update({ enabled_banks: parsed.data.banks, updated_at: new Date().toISOString() })
+    .eq("user_id", await requireUserId());
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/profile");
   return { ok: true };
 }
 

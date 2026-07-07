@@ -32,6 +32,7 @@ const tx = (
   id,
   gmail_message_id: `mock-${id}`,
   currency: "DOP",
+  exchange_rate: null,
   card_last4: "4521",
   available_balance: null,
   category: null,
@@ -105,6 +106,17 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
     type: "expense",
     date: daysAgo(2, 10, 18),
     category: "Compras",
+  }),
+  // Compra en dólares (p. ej. tarjeta de crédito Caribe): muestra el
+  // badge US$ y la conversión a RD$ en el detalle.
+  tx("t13", {
+    merchant: "Spotify",
+    amount: 11.99,
+    type: "expense",
+    date: daysAgo(2, 15, 30),
+    category: "Entretenimiento",
+    currency: "USD",
+    exchange_rate: 61.25,
   }),
   tx("t9", {
     merchant: "Netflix",
