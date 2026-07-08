@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Peso",
     short_name: "Peso",
-    description: "Rastreo personal de gastos e ingresos, sincronizado desde Qik",
+    description: "Rastreo personal de gastos e ingresos, sincronizado desde tu correo",
     start_url: "/",
     display: "standalone",
     orientation: "portrait",

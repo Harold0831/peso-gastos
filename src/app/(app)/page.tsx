@@ -5,6 +5,7 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import { getGmailStatus, getUserById, requireUserId, type GmailStatus } from "@/lib/users";
 import { getCredentialsForUser } from "@/lib/webauthn";
 import { Donut } from "@/components/donut";
+import { OnboardingCard } from "@/components/onboarding-card";
 import { TxRow } from "@/components/tx-row";
 import { BellIcon, ChevronIcon, WalletIcon } from "@/components/icons";
 
@@ -27,7 +28,7 @@ export default async function DashboardPage() {
   const now = new Date();
 
   let displayName = "Demo";
-  let gmail: GmailStatus = { linked: true, email: null, syncEnabled: true };
+  let gmail: GmailStatus = { linked: true, email: null, syncEnabled: true, enabledBanks: null };
   let hasPasskey = true; // en demo no se muestra el banner de Face ID
   if (isSupabaseConfigured()) {
     const userId = await requireUserId();
@@ -51,6 +52,10 @@ export default async function DashboardPage() {
   const totalBudget = budgets.reduce((s, b) => s + b.budget.limit_amount, 0);
   const totalSpent = budgets.reduce((s, b) => s + b.spent, 0);
   const budgetPct = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : null;
+
+  // Usuario recién llegado: sin transacciones aún. La guía de primeros
+  // pasos reemplaza a los banners sueltos hasta el primer movimiento.
+  const isNewUser = recent.length === 0;
 
   return (
     <main className="px-5 pt-safe">
@@ -124,8 +129,11 @@ export default async function DashboardPage() {
         </div>
       </section>
 
+      {/* Guía de primeros pasos (solo sin transacciones) */}
+      {isNewUser && <OnboardingCard gmailLinked={gmail.linked && gmail.syncEnabled} />}
+
       {/* Vincular/reconectar Gmail */}
-      {(!gmail.linked || !gmail.syncEnabled) && (
+      {!isNewUser && (!gmail.linked || !gmail.syncEnabled) && (
         <Link
           href="/profile"
           className="mt-3.5 flex items-center gap-3 rounded-[14px] border border-accent/30 bg-accent/5 px-4 py-3"
@@ -142,7 +150,7 @@ export default async function DashboardPage() {
             <span className="block text-[11px] text-ink-muted">
               {gmail.linked
                 ? "Reconéctalo para que el sync siga funcionando · Toca aquí"
-                : "Peso registra solo tus movimientos de Qik · Toca para configurar"}
+                : "Peso solo lee las notificaciones de tus bancos · Toca para configurar"}
             </span>
           </span>
           <ChevronIcon className="text-ink-muted" />
@@ -222,7 +230,7 @@ export default async function DashboardPage() {
       <section className="overflow-hidden rounded-card border border-line bg-card">
         {recent.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-ink-muted">
-            Sin transacciones todavía. Se importarán solas desde Gmail.
+            Sin transacciones todavía. Llegarán solas desde tu correo, o crea una con el botón +.
           </p>
         ) : (
           recent.map((tx, i) => <TxRow key={tx.id} tx={tx} divider={i < recent.length - 1} />)

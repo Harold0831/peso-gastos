@@ -100,17 +100,24 @@ export interface GmailStatus {
   linked: boolean;
   email: string | null;
   syncEnabled: boolean;
+  /** Ids de bank-parser.ts elegidos por el usuario; null = todos. */
+  enabledBanks: string[] | null;
 }
 
 export async function getGmailStatus(userId: string): Promise<GmailStatus> {
   const { data, error } = await getSupabaseAdmin()
     .from("gmail_accounts")
-    .select("email, sync_enabled")
+    .select("email, sync_enabled, enabled_banks")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw new Error(`Error cargando estado de Gmail: ${error.message}`);
-  if (!data) return { linked: false, email: null, syncEnabled: false };
-  return { linked: true, email: data.email, syncEnabled: data.sync_enabled };
+  if (!data) return { linked: false, email: null, syncEnabled: false, enabledBanks: null };
+  return {
+    linked: true,
+    email: data.email,
+    syncEnabled: data.sync_enabled,
+    enabledBanks: data.enabled_banks,
+  };
 }
 
 /**

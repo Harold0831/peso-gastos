@@ -141,9 +141,10 @@ async function mapWithConcurrency<T, R>(
 export async function fetchBankEmails(
   refreshToken: string,
   newerThanDays = 7,
+  senders: string[] = BANK_SENDERS,
 ): Promise<GmailMessage[]> {
   const accessToken = await getAccessToken(refreshToken);
-  const fromClause = BANK_SENDERS.map((s) => `from:${s}`).join(" OR ");
+  const fromClause = senders.map((s) => `from:${s}`).join(" OR ");
   const query = encodeURIComponent(`(${fromClause}) newer_than:${newerThanDays}d`);
 
   const ids: string[] = [];

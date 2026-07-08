@@ -2,8 +2,9 @@
 
 App de rastreo de gastos e ingresos, **multi-usuario**. Cada usuario entra
 con su cuenta de Google y puede vincular su Gmail para que Peso importe
-automáticamente las notificaciones de transacciones del banco **Qik**
-(neobanco dominicano), las categorice con Gemini y las presente en una PWA
+automáticamente las notificaciones de transacciones de sus bancos (Qik,
+Banco Popular, Banco Caribe, Scotiabank, BHD — elegibles por usuario en
+/profile), las categorice con Gemini y las presente en una PWA
 móvil instalable en iPhone. Creada por Harold, desplegada en Vercel,
 pensada para él y sus amigos (máx. 100 usuarios — ver § Configurar Google).
 
@@ -55,6 +56,8 @@ src/
 ├── lib/
 │   ├── data.ts             # Lecturas, acotadas al usuario en sesión
 │   ├── actions.ts          # Server actions de mutación, acotadas al usuario
+│   ├── banks.ts            # Catálogo de bancos (ids/nombres) — client-safe
+│   ├── exchange-rate.ts    # Tasa USD→DOP con cache diaria (tabla exchange_rates)
 │   ├── users.ts            # upsert desde Google, gmail_accounts, requireUserId()
 │   ├── google-oauth.ts     # Authorization code flow + verificación de id_token
 │   ├── crypto.ts           # AES-256-GCM para refresh tokens en la DB
@@ -80,6 +83,7 @@ supabase/
 ├── migrations/0001_init.sql # Tablas base + RLS
 ├── migrations/0002_...sql   # Soft delete de transacciones
 ├── migrations/0003_...sql   # Multi-usuario: users, gmail_accounts, user_id, feedback
+├── migrations/0004_...sql   # Multi-moneda (exchange_rates, exchange_rate) + enabled_banks
 └── seed.sql                 # Categorías por defecto (compartidas entre usuarios)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
@@ -116,6 +120,29 @@ design/                      # Referencias visuales (no es código de la app)
   (por `gmail_message_id` y por monto+fecha+tipo) **no** filtran
   `deleted_at` a propósito, para seguir reconociendo el correo como ya
   procesado aunque el usuario lo haya borrado de la vista.
+- **Multi-moneda (migración `0004`)**: `amount` SIEMPRE se guarda en su
+  moneda original (`currency`: `"DOP" | "USD"`, union type en `types.ts`);
+  nunca se convierte al guardar. La conversión vive en dos lugares: (a) al
+  sincronizar/crear, se estampa `exchange_rate` (pesos por 1 USD, tasa del
+  día) en la transacción; (b) al agregar (`data.ts` → `dopConverter()`),
+  los totales/gráficas/presupuestos multiplican por esa tasa — las filas
+  USD viejas sin tasa (pre-0004) caen a la última cacheada. La tasa del
+  día viene de `exchange-rate.ts`: cache diaria en la tabla
+  `exchange_rates` (1 consulta externa por día para toda la app),
+  proveedor actual open.er-api.com (sin API key); BCRD pendiente (issue
+  #1, requiere registro en su portal — NO adivinar su formato). Fallo
+  suave estilo Gemini: sin tasa, la transacción se inserta igual con
+  `exchange_rate` null. La UI muestra `US$`/`RD$` según `currency`
+  (`formatMoney(amount, currency)`) y el detalle agrega "≈ RD$ …" con la
+  tasa estampada.
+- **Bancos por usuario** (`gmail_accounts.enabled_banks`, migración
+  `0004`): array de ids del catálogo `banks.ts` (`qik`, `popular`,
+  `caribe`, `scotiabank`, `bhd`); NULL = todos (default, nadie pierde
+  sync). El perfil ("Mis bancos") los togglea vía `setEnabledBanks`;
+  `runSyncForUser` pasa `sendersForBanks(enabled_banks)` a
+  `fetchBankEmails` para acotar la búsqueda en Gmail. `banks.ts` existe
+  separado de `bank-parser.ts` a propósito: la UI y los schemas Zod lo
+  importan desde el cliente sin arrastrar los 5 parsers al bundle.
 - **Confirmación en lote** (`confirmTransactionsBulk`): en /transactions,
   filtro "Por confirmar" → "Seleccionar varias" activa checkboxes en
   `TxRow` (prop `selectable`). Si 2+ pendientes comparten la misma
@@ -128,12 +155,12 @@ design/                      # Referencias visuales (no es código de la app)
   trae en su payload el `emailAddress` del buzón que cambió →
   `runSyncForGmailAddress()` sincroniza solo a ese usuario. Cada watch
   expira a los 7 días máximo; el cron diario de `vercel.json` (`GET
-  /api/gmail-watch/renew`, Bearer `CRON_SECRET`) los renueva todos. Al
+/api/gmail-watch/renew`, Bearer `CRON_SECRET`) los renueva todos. Al
   vincular Gmail (callback de OAuth) el watch se activa de inmediato y se
   corre el primer sync, sin esperar al cron.
 - **Sync manual (fallback)**: botón "Sincronizar" y pull-to-refresh de
   /transactions → server action `syncNow` → `runSyncForUser(usuario en
-  sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
+sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
   usuarios — para curl/atajos externos o backfills (`?days=N`).
 - **Tokens revocados**: si un usuario quita el acceso desde su cuenta de
   Google, el refresh falla con `invalid_grant` → `GmailAuthError` →
@@ -228,7 +255,7 @@ Estos tipos ignorables son la mayoría del volumen real de la bandeja
 
 - **Fecha**: tres formatos según el tipo de correo, todos en AST (UTC-4
   fijo, RD no tiene horario de verano) — numérico `MM-DD-YYYY HH:MM
-  AM/PM (AST)` (compras con tarjeta), español con hora
+AM/PM (AST)` (compras con tarjeta), español con hora
   (`DD monthname YYYY / HH:MM a.m./p.m.`), o español sin hora
   (`DD de mon YYYY`, mes abreviado). Sin hora explícita se usa mediodía
   para no cruzar el límite del día al convertir a UTC.
@@ -270,19 +297,19 @@ builder en `qik-parser.ts` — no adivines el formato.**
 Copia `.env.example` a `.env.local`. En Vercel se configuran en
 Project Settings → Environment Variables.
 
-| Variable | Qué es | Dónde se obtiene |
-|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | URL del proyecto | Supabase → Settings → API |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Key pública (no se usa en runtime; RLS bloquea todo) | Supabase → Settings → API |
-| `SUPABASE_SERVICE_ROLE_KEY` | Key de servidor — **secreta** | Supabase → Settings → API |
-| `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` | OAuth2 client — login con Google Y lectura de Gmail | Google Cloud Console (abajo) |
-| `TOKEN_ENCRYPTION_KEY` | Cifra los refresh tokens de Gmail en la DB (AES-256-GCM) | `openssl rand -base64 32` |
-| `GMAIL_PUBSUB_TOPIC` | Tópico de Cloud Pub/Sub para Gmail Push | Google Cloud Console (§ Gmail Push) |
-| `GMAIL_WEBHOOK_AUDIENCE` | URL pública de /api/gmail-webhook, valida el JWT de Pub/Sub | Tu dominio de Vercel |
-| `GEMINI_API_KEY` | API key de Gemini | https://aistudio.google.com/apikey |
-| `SYNC_SECRET` | Protege /api/sync (llamadas externas manuales) | `openssl rand -hex 32` |
-| `CRON_SECRET` | Protege /api/gmail-watch/renew — **debe llamarse así**, Vercel lo inyecta automáticamente en sus crons | `openssl rand -hex 32` |
-| `SESSION_SECRET` | Firma la cookie JWT de sesión | `openssl rand -base64 32` |
+| Variable                                  | Qué es                                                                                                 | Dónde se obtiene                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`                | URL del proyecto                                                                                       | Supabase → Settings → API           |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY`           | Key pública (no se usa en runtime; RLS bloquea todo)                                                   | Supabase → Settings → API           |
+| `SUPABASE_SERVICE_ROLE_KEY`               | Key de servidor — **secreta**                                                                          | Supabase → Settings → API           |
+| `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` | OAuth2 client — login con Google Y lectura de Gmail                                                    | Google Cloud Console (abajo)        |
+| `TOKEN_ENCRYPTION_KEY`                    | Cifra los refresh tokens de Gmail en la DB (AES-256-GCM)                                               | `openssl rand -base64 32`           |
+| `GMAIL_PUBSUB_TOPIC`                      | Tópico de Cloud Pub/Sub para Gmail Push                                                                | Google Cloud Console (§ Gmail Push) |
+| `GMAIL_WEBHOOK_AUDIENCE`                  | URL pública de /api/gmail-webhook, valida el JWT de Pub/Sub                                            | Tu dominio de Vercel                |
+| `GEMINI_API_KEY`                          | API key de Gemini                                                                                      | https://aistudio.google.com/apikey  |
+| `SYNC_SECRET`                             | Protege /api/sync (llamadas externas manuales)                                                         | `openssl rand -hex 32`              |
+| `CRON_SECRET`                             | Protege /api/gmail-watch/renew — **debe llamarse así**, Vercel lo inyecta automáticamente en sus crons | `openssl rand -hex 32`              |
+| `SESSION_SECRET`                          | Firma la cookie JWT de sesión                                                                          | `openssl rand -base64 32`           |
 
 ## Configurar Google (login + Gmail multi-usuario)
 
@@ -293,10 +320,10 @@ tabla `gmail_accounts` — ya no hay token en env vars.
 
 1. En [Google Cloud Console](https://console.cloud.google.com) crea un
    proyecto ("peso") y habilita **Gmail API** (APIs & Services → Library).
-2. Configura la **OAuth consent screen**: tipo *External*. Scopes:
+2. Configura la **OAuth consent screen**: tipo _External_. Scopes:
    `openid`, `email`, `profile` y
    `https://www.googleapis.com/auth/gmail.readonly`.
-3. Crea credenciales **OAuth client ID** tipo *Web application* con estos
+3. Crea credenciales **OAuth client ID** tipo _Web application_ con estos
    **redirect URIs autorizados** (los dos):
    - `https://tu-dominio.vercel.app/api/auth/google/callback`
    - `http://localhost:3000/api/auth/google/callback` (para dev local)
@@ -310,7 +337,7 @@ tabla `gmail_accounts` — ya no hay token en env vars.
 sentido para una app de amigos):
 
 - Cada usuario nuevo ve una pantalla **"Google no ha verificado esta app"**
-  y debe tocar *Avanzado → Ir a peso (no seguro)* para continuar. Avísales
+  y debe tocar _Avanzado → Ir a peso (no seguro)_ para continuar. Avísales
   a tus amigos que esa pantalla es esperada.
 - El checkbox de "leer tu correo" en el consent es **opcional** — si
   alguien lo desmarca, su cuenta se crea igual en modo manual y puede
@@ -462,7 +489,7 @@ activa el bloqueo por el `useState(false)` inicial del gate.
 - **PWA a mano** (manifest + sw.js simple) en vez de next-pwa/serwist:
   la app es dinámica, un SW network-first basta para instalabilidad iOS.
 - **El Service Worker nunca intercepta navegación (`request.mode ===
-  "navigate"`).** Bug real (corregido el 2026-07-04): la versión anterior
+"navigate"`).** Bug real (corregido el 2026-07-04): la versión anterior
   clonaba y cacheaba la respuesta de cada navegación — Next.js App Router
   resuelve cada `loading.tsx`/Suspense boundary mandando el HTML en chunks
   progresivos sobre la MISMA response, y el `event.respondWith()` +
@@ -473,8 +500,11 @@ activa el bloqueo por el `useState(false)` inicial del gate.
   siempre debe traer datos frescos. `public/sw.js` ahora deja pasar
   `navigate` sin tocarlo; solo cachea estáticos (`/_next/static/`,
   `/icons/`), que no tienen este problema de streaming.
-- **Montos**: siempre `RD$ X,XXX.XX` vía `formatMoney` (`src/lib/format.ts`).
-  `amount` se guarda positivo; el signo lo da `type`.
+- **Montos**: `RD$ X,XXX.XX` o `US$ X.XX` según `currency`, vía
+  `formatMoney(amount, currency)` (`src/lib/format.ts`, default DOP).
+  `amount` se guarda positivo y en su moneda original; el signo lo da
+  `type` y la conversión a RD$ para totales vive en `data.ts` (ver
+  § Multi-moneda).
 
 ## Deploy en Vercel
 
@@ -483,7 +513,7 @@ activa el bloqueo por el `useState(false)` inicial del gate.
    quieres que el cron de renovación de Gmail Push funcione.
 3. Si vas a usar Gmail Push, sigue § Gmail Push arriba **después** del
    primer deploy (necesitas la URL real de producción para el webhook).
-4. QA en iPhone: abre el dominio en Safari → Compartir → *Agregar a inicio*.
+4. QA en iPhone: abre el dominio en Safari → Compartir → _Agregar a inicio_.
    Verifica el login con Google, instalación standalone y safe areas.
 
 ## Invitar amigos
@@ -494,7 +524,7 @@ puede crear cuenta (hasta el tope de 100 usuarios de Google, ver
 
 1. Compartirle `https://tu-dominio.vercel.app`.
 2. Avisarle que la pantalla "Google no ha verificado esta app" es normal —
-   debe tocar *Avanzado → Continuar*.
+   debe tocar _Avanzado → Continuar_.
 3. Si usa Qik, que deje marcado el checkbox de lectura de correo en el
    consent; si no usa Qik, puede desmarcarlo y registrar gastos a mano.
 4. Que instale la PWA (instrucciones dentro de la app, en /profile).

@@ -1,10 +1,17 @@
 import { format, isToday, isYesterday } from "date-fns";
 import { es } from "date-fns/locale";
+import type { Currency } from "./types";
 
-/** Formatea montos como "RD$ 1,234.56". */
-export function formatMoney(amount: number): string {
+/** Prefijo visual por moneda. */
+export function currencySymbol(currency: Currency = "DOP"): string {
+  return currency === "USD" ? "US$" : "RD$";
+}
+
+/** Formatea montos como "RD$ 1,234.56" o "US$ 11.99" según la moneda. */
+export function formatMoney(amount: number, currency: Currency = "DOP"): string {
   return (
-    "RD$ " +
+    currencySymbol(currency) +
+    " " +
     Math.abs(amount).toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
@@ -12,9 +19,13 @@ export function formatMoney(amount: number): string {
   );
 }
 
-/** Monto con signo para listas: "+RD$ 100.00" / "−RD$ 100.00". */
-export function formatSignedMoney(amount: number, type: "expense" | "income"): string {
-  return (type === "income" ? "+" : "−") + formatMoney(amount);
+/** Monto con signo para listas: "+RD$ 100.00" / "−US$ 11.99". */
+export function formatSignedMoney(
+  amount: number,
+  type: "expense" | "income",
+  currency: Currency = "DOP",
+): string {
+  return (type === "income" ? "+" : "−") + formatMoney(amount, currency);
 }
 
 /** Encabezados de grupo de fecha: "Hoy", "Ayer", "Lun 4 may". */

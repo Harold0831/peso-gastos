@@ -51,8 +51,8 @@ export default async function LoginPage({
         </Link>
 
         <p className="mt-4 text-xs leading-relaxed text-ink-muted">
-          Google te preguntará si permites leer tu correo — es lo que usa Peso para importar tus
-          transacciones de Qik automáticamente. Puedes omitirlo y registrar todo a mano.
+          Google te preguntará si permites leer tu correo — es lo que usa Peso para importar las
+          notificaciones de tus bancos automáticamente. Puedes omitirlo y registrar todo a mano.
         </p>
 
         {message && <p className="mt-4 text-sm font-medium text-expense">{message}</p>}

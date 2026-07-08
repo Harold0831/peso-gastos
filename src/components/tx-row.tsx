@@ -66,7 +66,7 @@ export function TxRow({ tx, divider, selectable, selected, onToggleSelect }: TxR
           tx.type === "income" ? "text-income" : "text-ink"
         }`}
       >
-        {formatSignedMoney(tx.amount, tx.type)}
+        {formatSignedMoney(tx.amount, tx.type, tx.currency)}
       </span>
     </>
   );

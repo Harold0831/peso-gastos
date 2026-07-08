@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { BANK_IDS } from "./banks";
 
 export const transactionSchema = z.object({
   type: z.enum(["expense", "income"]),
   merchant: z.string().trim().min(1, "Escribe el nombre del comercio"),
   amount: z.coerce.number().positive("El monto debe ser mayor que 0"),
+  currency: z.enum(["DOP", "USD"]).default("DOP"),
   date: z.string().min(1, "Selecciona la fecha"),
   category: z.string().trim().min(1, "Selecciona una categoría"),
   notes: z.string().trim().optional(),
@@ -40,4 +42,10 @@ export const goalSchema = z.object({
 export const contributionSchema = z.object({
   goal_id: z.string().min(1),
   amount: z.coerce.number().positive("El abono debe ser mayor que 0"),
+});
+
+/** Bancos a sincronizar (perfil → "Mis bancos"). Vacío no es válido:
+ *  para "ninguno" está el toggle de desvincular Gmail. */
+export const enabledBanksSchema = z.object({
+  banks: z.array(z.enum(BANK_IDS as [string, ...string[]])).min(1, "Selecciona al menos un banco"),
 });

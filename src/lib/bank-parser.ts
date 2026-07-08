@@ -1,4 +1,5 @@
 import type { ParsedBankEmail } from "./types";
+import type { BankId } from "./banks";
 import { isIgnorableQikEmail, parseQikEmail } from "./qik-parser";
 import { isIgnorablePopularEmail, parsePopularEmail } from "./popular-parser";
 import { parseCaribeEmail } from "./caribe-parser";
@@ -19,6 +20,8 @@ import { parseBhdEmail } from "./bhd-parser";
  */
 
 interface BankDefinition {
+  /** Id del catálogo compartido (banks.ts) — se guarda en enabled_banks. */
+  id: BankId;
   name: string;
   senders: string[];
   parse: (subject: string, body: string, receivedAt: Date) => ParsedBankEmail | null;
@@ -27,18 +30,21 @@ interface BankDefinition {
 
 const BANKS: BankDefinition[] = [
   {
+    id: "qik",
     name: "Qik",
     senders: ["no-reply-qik@qik.com.do", "notificaciones@qik.do"],
     parse: (subject, body) => parseQikEmail(subject, body),
     isIgnorable: (subject, body) => isIgnorableQikEmail(subject, body),
   },
   {
+    id: "popular",
     name: "Banco Popular",
     senders: ["notificaciones@popularenlinea.com"],
     parse: (subject, body) => parsePopularEmail(subject, body),
     isIgnorable: (subject) => isIgnorablePopularEmail(subject),
   },
   {
+    id: "caribe",
     name: "Banco Caribe",
     senders: ["notificaciones@bancocaribe.com.do"],
     parse: (subject, body) => parseCaribeEmail(subject, body),
@@ -47,6 +53,7 @@ const BANKS: BankDefinition[] = [
     isIgnorable: () => true,
   },
   {
+    id: "scotiabank",
     name: "Scotiabank",
     senders: ["alertas@scotiabank.com"],
     parse: (subject, body, receivedAt) => parseScotiabankEmail(subject, body, receivedAt),
@@ -55,6 +62,7 @@ const BANKS: BankDefinition[] = [
     isIgnorable: () => true,
   },
   {
+    id: "bhd",
     name: "BHD",
     senders: ["alertas@bhd.com.do", "notificaciones@bhd.com.do"],
     parse: (subject, body) => parseBhdEmail(subject, body),
@@ -66,6 +74,18 @@ const BANKS: BankDefinition[] = [
 ];
 
 export const BANK_SENDERS = BANKS.flatMap((b) => b.senders);
+
+/**
+ * Remitentes a buscar en Gmail según los bancos elegidos por el usuario.
+ * `null`/vacío = todos (default histórico: nadie pierde sync). Ids
+ * desconocidos se ignoran — si un banco se elimina del registro, las
+ * preferencias viejas no rompen el filtro.
+ */
+export function sendersForBanks(enabledBanks: string[] | null): string[] {
+  if (!enabledBanks || enabledBanks.length === 0) return BANK_SENDERS;
+  const senders = BANKS.filter((b) => enabledBanks.includes(b.id)).flatMap((b) => b.senders);
+  return senders.length > 0 ? senders : BANK_SENDERS;
+}
 
 function bankForSender(from: string): BankDefinition | null {
   const address = from.toLowerCase();

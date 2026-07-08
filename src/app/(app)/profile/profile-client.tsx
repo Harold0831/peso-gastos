@@ -3,15 +3,22 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { startRegistration } from "@simplewebauthn/browser";
-import { logoutAction, sendFeedback } from "@/lib/actions";
+import { logoutAction, sendFeedback, setEnabledBanks } from "@/lib/actions";
 import { markAuthenticated } from "@/lib/app-lock";
+import { SUPPORTED_BANKS } from "@/lib/banks";
 import { merchantInitials } from "@/lib/format";
 
 interface ProfileClientProps {
   name: string;
   email: string;
   avatarUrl: string | null;
-  gmail: { linked: boolean; email: string | null; syncEnabled: boolean };
+  gmail: {
+    linked: boolean;
+    email: string | null;
+    syncEnabled: boolean;
+    /** Ids de bancos a sincronizar; null = todos. */
+    enabledBanks: string[] | null;
+  };
   hasPasskey: boolean;
   demoMode?: boolean;
 }
@@ -31,6 +38,30 @@ export function ProfileClient({
   const [feedbackState, setFeedbackState] = useState<"idle" | "sent" | "error">("idle");
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [sending, startSending] = useTransition();
+  // null (todos) se materializa a la lista completa para los checkboxes
+  const [banks, setBanks] = useState<string[]>(
+    gmail.enabledBanks ?? SUPPORTED_BANKS.map((b) => b.id),
+  );
+  const [banksError, setBanksError] = useState<string | null>(null);
+  const [savingBanks, startSavingBanks] = useTransition();
+
+  const toggleBank = (id: string) => {
+    setBanksError(null);
+    const next = banks.includes(id) ? banks.filter((b) => b !== id) : [...banks, id];
+    if (next.length === 0) {
+      setBanksError("Deja al menos un banco activo");
+      return;
+    }
+    const previous = banks;
+    setBanks(next); // optimista: revierte si la action falla
+    startSavingBanks(async () => {
+      const result = await setEnabledBanks({ banks: next });
+      if (!result.ok) {
+        setBanks(previous);
+        setBanksError(result.error ?? "No se pudo guardar");
+      }
+    });
+  };
 
   async function activateFaceId() {
     setRegistering(true);
@@ -130,8 +161,9 @@ export function ProfileClient({
         ) : (
           <>
             <p className="mt-3 text-[13px] leading-relaxed text-ink-muted">
-              Vincula tu Gmail para que Peso importe automáticamente tus transacciones de Qik. Sin
-              esto, puedes registrar todo a mano con el botón +.
+              Vincula tu Gmail para que Peso importe automáticamente las notificaciones de tus
+              bancos (Qik, Popular, Caribe, Scotiabank, BHD). Sin esto, puedes registrar todo a mano
+              con el botón +.
             </p>
             <a
               href="/api/auth/google?consent=1"
@@ -142,6 +174,41 @@ export function ProfileClient({
           </>
         )}
       </section>
+
+      {/* Bancos a sincronizar */}
+      {gmail.linked && gmail.syncEnabled && (
+        <section className={sectionClass}>
+          <div className="flex items-center justify-between">
+            <h2 className={labelClass}>Mis bancos</h2>
+            {savingBanks && <span className="text-[11px] font-medium text-ink-muted">…</span>}
+          </div>
+          <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
+            Peso solo busca correos de los bancos que marques aquí.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {SUPPORTED_BANKS.map((bank) => {
+              const active = banks.includes(bank.id);
+              return (
+                <button
+                  key={bank.id}
+                  type="button"
+                  onClick={() => toggleBank(bank.id)}
+                  aria-pressed={active}
+                  className={`rounded-pill border px-3.5 py-2 text-xs font-semibold transition ${
+                    active
+                      ? "border-accent bg-accent text-white"
+                      : "border-line bg-surface text-ink"
+                  }`}
+                >
+                  {active ? "✓ " : ""}
+                  {bank.name}
+                </button>
+              );
+            })}
+          </div>
+          {banksError && <p className="mt-2 text-xs font-medium text-expense">{banksError}</p>}
+        </section>
+      )}
 
       {/* Face ID */}
       <section className={sectionClass}>

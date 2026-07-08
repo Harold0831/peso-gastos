@@ -29,6 +29,7 @@ export function NewTransactionForm({ categories }: { categories: string[] }) {
     defaultValues: {
       type: "expense",
       merchant: "",
+      currency: "DOP",
       date: new Date().toISOString().slice(0, 16),
       category: "",
       notes: "",
@@ -37,6 +38,7 @@ export function NewTransactionForm({ categories }: { categories: string[] }) {
 
   const type = watch("type");
   const category = watch("category");
+  const currency = watch("currency");
 
   const onSubmit = (data: TransactionInput) => {
     setServerError(null);
@@ -107,9 +109,30 @@ export function NewTransactionForm({ categories }: { categories: string[] }) {
         </div>
 
         <div>
-          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-ink">
-            Monto (RD$)
-          </label>
+          <div className="mb-2 flex items-center justify-between">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-ink">
+              Monto
+            </label>
+            <div className="flex rounded-pill border border-line bg-surface p-0.5">
+              {(
+                [
+                  ["DOP", "RD$"],
+                  ["USD", "US$"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setValue("currency", value)}
+                  className={`rounded-pill px-3 py-1 text-[11px] font-bold transition ${
+                    currency === value ? "bg-accent text-white" : "text-ink-muted"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <input
             {...register("amount")}
             type="number"
@@ -119,6 +142,11 @@ export function NewTransactionForm({ categories }: { categories: string[] }) {
             placeholder="0.00"
             className={inputClass}
           />
+          {currency === "USD" && (
+            <p className="mt-1 text-[11px] text-ink-muted">
+              Se convierte a RD$ con la tasa del día para tus totales y presupuestos.
+            </p>
+          )}
           {errors.amount && (
             <p className="mt-1 text-xs font-medium text-expense">{errors.amount.message}</p>
           )}

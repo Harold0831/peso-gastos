@@ -1,9 +1,10 @@
 import "server-only";
 import { GmailAuthError, fetchBankEmails } from "./gmail";
-import { isIgnorableBankEmail, parseBankEmail } from "./bank-parser";
+import { isIgnorableBankEmail, parseBankEmail, sendersForBanks } from "./bank-parser";
 import { suggestCategory } from "./gemini";
 import { getSupabaseAdmin } from "./supabase";
 import { decryptToken } from "./crypto";
+import { getUsdToDopRate } from "./exchange-rate";
 
 export interface SyncResult {
   synced: number;
@@ -15,6 +16,8 @@ interface GmailAccountRow {
   email: string;
   refresh_token_enc: string;
   sync_enabled: boolean;
+  /** Ids de bank-parser.ts elegidos por el usuario; null = todos. */
+  enabled_banks: string[] | null;
 }
 
 /**
@@ -37,7 +40,7 @@ export async function runSyncForUser(userId: string, newerThanDays?: number): Pr
 
   const { data: account, error: accountError } = await supabase
     .from("gmail_accounts")
-    .select("user_id, email, refresh_token_enc, sync_enabled")
+    .select("user_id, email, refresh_token_enc, sync_enabled, enabled_banks")
     .eq("user_id", userId)
     .maybeSingle();
   if (accountError) throw new Error(`Error cargando cuenta de Gmail: ${accountError.message}`);
@@ -47,7 +50,11 @@ export async function runSyncForUser(userId: string, newerThanDays?: number): Pr
 
   let emails;
   try {
-    emails = await fetchBankEmails(decryptToken(account.refresh_token_enc), newerThanDays);
+    emails = await fetchBankEmails(
+      decryptToken(account.refresh_token_enc),
+      newerThanDays,
+      sendersForBanks(account.enabled_banks),
+    );
   } catch (err) {
     if (err instanceof GmailAuthError) {
       await supabase.from("gmail_accounts").update({ sync_enabled: false }).eq("user_id", userId);
@@ -78,6 +85,15 @@ export async function runSyncForUser(userId: string, newerThanDays?: number): Pr
   const { data: categories, error: catError } = await supabase.from("categories").select("name");
   if (catError) throw new Error(`Error cargando categorías: ${catError.message}`);
   const categoryNames = (categories ?? []).map((c) => c.name);
+
+  // Tasa USD→DOP del día, pedida una sola vez por corrida y solo si algún
+  // correo viene en moneda extranjera. Fallo suave: sin tasa la transacción
+  // se inserta igual con exchange_rate null (data.ts usa la última cacheada).
+  let rateMemo: number | null | undefined;
+  const getRate = async () => {
+    if (rateMemo === undefined) rateMemo = await getUsdToDopRate();
+    return rateMemo;
+  };
 
   let synced = 0;
   for (const email of newEmails) {
@@ -121,6 +137,7 @@ export async function runSyncForUser(userId: string, newerThanDays?: number): Pr
       merchant: parsed.merchant,
       amount: parsed.amount,
       currency: parsed.currency,
+      exchange_rate: parsed.currency === "DOP" ? null : await getRate(),
       date: parsed.date.toISOString(),
       card_last4: parsed.card_last4,
       available_balance: parsed.available_balance,
@@ -160,7 +177,7 @@ export async function runSyncForGmailAddress(email: string): Promise<SyncResult>
 export async function runSyncAll(newerThanDays?: number): Promise<SyncResult> {
   const { data: accounts, error } = await getSupabaseAdmin()
     .from("gmail_accounts")
-    .select("user_id, email, refresh_token_enc, sync_enabled")
+    .select("user_id, email, refresh_token_enc, sync_enabled, enabled_banks")
     .eq("sync_enabled", true);
   if (error) throw new Error(`Error listando cuentas de Gmail: ${error.message}`);
 

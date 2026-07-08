@@ -1,4 +1,4 @@
-import type { ParsedBankEmail } from "./types";
+import type { Currency, ParsedBankEmail } from "./types";
 import { htmlToText } from "./qik-parser";
 
 /**
@@ -59,7 +59,7 @@ export function parsePopularDate(raw: string): Date | null {
 }
 
 /** "Peso dominicano" → DOP, "Dólar…" → USD. Default DOP. */
-function parseCurrency(raw: string | null): string {
+function parseCurrency(raw: string | null): Currency {
   if (raw && /d[oó]lar|usd/i.test(raw)) return "USD";
   return "DOP";
 }

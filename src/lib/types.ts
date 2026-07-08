@@ -1,12 +1,21 @@
 export type TransactionType = "expense" | "income";
 
+/** Monedas que los parsers de banco producen hoy. `amount` siempre se
+ *  guarda en su moneda original; la conversión a DOP para reportes usa
+ *  `exchange_rate` (ver exchange-rate.ts). */
+export type Currency = "DOP" | "USD";
+
 export interface Transaction {
   id: string;
   gmail_message_id: string | null;
   type: TransactionType;
   merchant: string;
   amount: number;
-  currency: string;
+  currency: Currency;
+  /** Pesos por 1 unidad de `currency`, capturada al sincronizar/crear.
+   *  NULL en transacciones DOP y en las históricas previas a la migración
+   *  0004 (la capa de lectura usa la última tasa cacheada como fallback). */
+  exchange_rate: number | null;
   date: string; // ISO timestamptz
   card_last4: string | null;
   available_balance: number | null;
@@ -53,7 +62,7 @@ export interface ParsedBankEmail {
   type: TransactionType;
   merchant: string;
   amount: number;
-  currency: string;
+  currency: Currency;
   date: Date;
   card_last4: string | null;
   available_balance: number | null;
