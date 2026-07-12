@@ -6,14 +6,24 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { z } from "zod";
 import { transactionSchema, type TransactionInput } from "@/lib/schemas";
+import type { Currency } from "@/lib/types";
 
-// z.coerce.number() acepta unknown como entrada: el form trabaja con el tipo
-// de entrada del schema y handleSubmit entrega el tipo de salida ya coercido.
+// El schema coacciona la entrada: el form trabaja con el tipo de entrada y
+// handleSubmit entrega el tipo de salida ya validado.
 type FormInput = z.input<typeof transactionSchema>;
 import { createTransaction } from "@/lib/actions";
+import { currencySymbol } from "@/lib/format";
 import { BackIcon } from "@/components/icons";
 
-export function NewTransactionForm({ categories }: { categories: string[] }) {
+const CURRENCY_OPTIONS: Currency[] = ["DOP", "USD", "EUR"];
+
+export function NewTransactionForm({
+  categories,
+  homeCurrency,
+}: {
+  categories: string[];
+  homeCurrency: Currency;
+}) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
@@ -29,7 +39,7 @@ export function NewTransactionForm({ categories }: { categories: string[] }) {
     defaultValues: {
       type: "expense",
       merchant: "",
-      currency: "DOP",
+      currency: homeCurrency,
       date: new Date().toISOString().slice(0, 16),
       category: "",
       notes: "",
@@ -114,12 +124,7 @@ export function NewTransactionForm({ categories }: { categories: string[] }) {
               Monto
             </label>
             <div className="flex rounded-pill border border-line bg-surface p-0.5">
-              {(
-                [
-                  ["DOP", "RD$"],
-                  ["USD", "US$"],
-                ] as const
-              ).map(([value, label]) => (
+              {CURRENCY_OPTIONS.map((value) => (
                 <button
                   key={value}
                   type="button"
@@ -128,23 +133,22 @@ export function NewTransactionForm({ categories }: { categories: string[] }) {
                     currency === value ? "bg-accent text-white" : "text-ink-muted"
                   }`}
                 >
-                  {label}
+                  {currencySymbol(value)}
                 </button>
               ))}
             </div>
           </div>
           <input
             {...register("amount")}
-            type="number"
+            type="text"
             inputMode="decimal"
-            step="0.01"
-            min="0.01"
             placeholder="0.00"
             className={inputClass}
           />
-          {currency === "USD" && (
+          {currency !== homeCurrency && (
             <p className="mt-1 text-[11px] text-ink-muted">
-              Se convierte a RD$ con la tasa del día para tus totales y presupuestos.
+              Se convierte a {currencySymbol(homeCurrency)} con la tasa del día para tus totales y
+              presupuestos.
             </p>
           )}
           {errors.amount && (
