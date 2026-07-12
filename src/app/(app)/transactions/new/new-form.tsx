@@ -15,7 +15,16 @@ import { createTransaction } from "@/lib/actions";
 import { currencySymbol } from "@/lib/format";
 import { BackIcon } from "@/components/icons";
 
-const CURRENCY_OPTIONS: Currency[] = ["DOP", "USD", "EUR"];
+/**
+ * Monedas que se ofrecen según la moneda de casa. Solo tiene sentido ofrecer
+ * una moneda distinta si sabemos convertirla: la única tasa del sistema es
+ * USD→DOP, así que un usuario de casa DOP puede registrar en US$ (se
+ * convierte); los demás (p. ej. casa EUR) registran solo en su moneda, sin
+ * conversión ni un toggle que llevaría a totales mal convertidos.
+ */
+function currencyOptionsFor(home: Currency): Currency[] {
+  return home === "DOP" ? ["DOP", "USD"] : [home];
+}
 
 export function NewTransactionForm({
   categories,
@@ -27,6 +36,7 @@ export function NewTransactionForm({
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
+  const currencyOptions = currencyOptionsFor(homeCurrency);
 
   const {
     register,
@@ -121,22 +131,24 @@ export function NewTransactionForm({
         <div>
           <div className="mb-2 flex items-center justify-between">
             <label className="block text-xs font-semibold uppercase tracking-wide text-ink">
-              Monto
+              Monto{currencyOptions.length === 1 ? ` (${currencySymbol(homeCurrency)})` : ""}
             </label>
-            <div className="flex rounded-pill border border-line bg-surface p-0.5">
-              {CURRENCY_OPTIONS.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setValue("currency", value)}
-                  className={`rounded-pill px-3 py-1 text-[11px] font-bold transition ${
-                    currency === value ? "bg-accent text-white" : "text-ink-muted"
-                  }`}
-                >
-                  {currencySymbol(value)}
-                </button>
-              ))}
-            </div>
+            {currencyOptions.length > 1 && (
+              <div className="flex rounded-pill border border-line bg-surface p-0.5">
+                {currencyOptions.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setValue("currency", value)}
+                    className={`rounded-pill px-3 py-1 text-[11px] font-bold transition ${
+                      currency === value ? "bg-accent text-white" : "text-ink-muted"
+                    }`}
+                  >
+                    {currencySymbol(value)}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <input
             {...register("amount")}
