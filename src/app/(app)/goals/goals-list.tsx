@@ -3,11 +3,11 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { differenceInCalendarDays } from "date-fns";
-import type { SavingsGoal } from "@/lib/types";
-import { formatMoney } from "@/lib/format";
+import type { Currency, SavingsGoal } from "@/lib/types";
+import { currencySymbol, formatMoney } from "@/lib/format";
 import { contributeToGoal, createGoal } from "@/lib/actions";
 
-export function GoalsList({ goals }: { goals: SavingsGoal[] }) {
+export function GoalsList({ goals, currency }: { goals: SavingsGoal[]; currency: Currency }) {
   return (
     <main className="pt-safe">
       <div className="px-5 py-4">
@@ -20,15 +20,15 @@ export function GoalsList({ goals }: { goals: SavingsGoal[] }) {
           </p>
         )}
         {goals.map((goal) => (
-          <GoalCard key={goal.id} goal={goal} />
+          <GoalCard key={goal.id} goal={goal} currency={currency} />
         ))}
-        <NewGoalForm />
+        <NewGoalForm currency={currency} />
       </div>
     </main>
   );
 }
 
-function GoalCard({ goal }: { goal: SavingsGoal }) {
+function GoalCard({ goal, currency }: { goal: SavingsGoal; currency: Currency }) {
   const router = useRouter();
   const [contributing, setContributing] = useState(false);
   const [amount, setAmount] = useState("");
@@ -97,8 +97,8 @@ function GoalCard({ goal }: { goal: SavingsGoal }) {
         />
       </div>
       <p className="text-[11px] font-medium text-ink-muted">
-        <span className="font-semibold text-ink">{formatMoney(goal.current_amount)}</span> de{" "}
-        {formatMoney(goal.target_amount)}
+        <span className="font-semibold text-ink">{formatMoney(goal.current_amount, currency)}</span>{" "}
+        de {formatMoney(goal.target_amount, currency)}
       </p>
 
       {!completed &&
@@ -111,7 +111,7 @@ function GoalCard({ goal }: { goal: SavingsGoal }) {
               step="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="Monto (RD$)"
+              placeholder={`Monto (${currencySymbol(currency)})`}
               autoFocus
               className="min-w-0 flex-1 rounded-btn border border-line bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-accent"
             />
@@ -145,7 +145,7 @@ function GoalCard({ goal }: { goal: SavingsGoal }) {
 
 const GOAL_ICONS = ["🎯", "🛟", "📱", "🏝️", "🚗", "🏠", "🎓", "💻"];
 
-function NewGoalForm() {
+function NewGoalForm({ currency }: { currency: Currency }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -220,7 +220,7 @@ function NewGoalForm() {
           step="0.01"
           value={target}
           onChange={(e) => setTarget(e.target.value)}
-          placeholder="Monto objetivo (RD$)"
+          placeholder={`Monto objetivo (${currencySymbol(currency)})`}
           className={inputClass}
         />
         <input

@@ -2,13 +2,16 @@
 
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, XAxis } from "recharts";
 import { formatMoney } from "@/lib/format";
+import type { Currency } from "@/lib/types";
 
 export function CategoryDonut({
   data,
   total,
+  currency,
 }: {
   data: { name: string; value: number; color: string }[];
   total: number;
+  currency: Currency;
 }) {
   return (
     <div className="relative mx-auto h-44 w-44">
@@ -35,7 +38,9 @@ export function CategoryDonut({
         <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
           Total
         </span>
-        <span className="text-lg font-extrabold tracking-tight text-ink">{formatMoney(total)}</span>
+        <span className="text-lg font-extrabold tracking-tight text-ink">
+          {formatMoney(total, currency)}
+        </span>
       </div>
     </div>
   );

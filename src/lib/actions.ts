@@ -126,6 +126,7 @@ export async function createTransaction(input: unknown): Promise<ActionResult> {
       category: parsed.data.category,
       notes: parsed.data.notes || null,
       confirmed: true,
+      source: "manual",
     });
   if (error) return { ok: false, error: error.message };
 

@@ -39,6 +39,7 @@ const tx = (
   ai_suggested_category: null,
   confirmed: true,
   notes: null,
+  source: null,
   created_at: overrides.date,
   raw_email_snippet: null,
   deleted_at: null,

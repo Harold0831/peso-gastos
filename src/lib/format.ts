@@ -4,7 +4,9 @@ import type { Currency } from "./types";
 
 /** Prefijo visual por moneda. */
 export function currencySymbol(currency: Currency = "DOP"): string {
-  return currency === "USD" ? "US$" : "RD$";
+  if (currency === "USD") return "US$";
+  if (currency === "EUR") return "€";
+  return "RD$";
 }
 
 /** Formatea montos como "RD$ 1,234.56" o "US$ 11.99" según la moneda. */

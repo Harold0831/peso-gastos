@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "./supabase";
 import { encryptToken } from "./crypto";
 import { SESSION_COOKIE, readSessionUserId } from "./session";
 import type { GoogleIdentity } from "./google-oauth";
+import type { Currency } from "./types";
 
 export interface User {
   id: string;
@@ -94,6 +95,37 @@ export async function getUserById(id: string): Promise<User | null> {
     .maybeSingle();
   if (error) throw new Error(`Error cargando usuario: ${error.message}`);
   return data;
+}
+
+/** Busca un usuario por email (endpoint admin de minting de tokens). */
+export async function getUserByEmail(email: string): Promise<User | null> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("users")
+    .select("*")
+    .eq("email", email.toLowerCase())
+    .maybeSingle();
+  if (error) throw new Error(`Error buscando usuario: ${error.message}`);
+  return data;
+}
+
+/** Moneda de casa de un usuario (en la que ve sus totales). Default DOP. */
+export async function getHomeCurrencyForUser(userId: string): Promise<Currency> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("users")
+    .select("home_currency")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw new Error(`Error cargando moneda de casa: ${error.message}`);
+  return (data?.home_currency as Currency) ?? "DOP";
+}
+
+/** Fija la moneda de casa de un usuario (endpoint admin). */
+export async function setHomeCurrencyForUser(userId: string, currency: Currency): Promise<void> {
+  const { error } = await getSupabaseAdmin()
+    .from("users")
+    .update({ home_currency: currency })
+    .eq("id", userId);
+  if (error) throw new Error(`Error guardando moneda de casa: ${error.message}`);
 }
 
 export interface GmailStatus {

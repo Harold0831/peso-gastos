@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { addMonths, format, subMonths } from "date-fns";
-import { getCategorySpend, getDailyExpenses, getMonthSummary } from "@/lib/data";
+import { getCategorySpend, getDailyExpenses, getHomeCurrency, getMonthSummary } from "@/lib/data";
 import { formatMoney, formatMonthLabel } from "@/lib/format";
 import { CategoryDonut, DailyBars } from "./charts-client";
 
@@ -20,10 +20,11 @@ export default async function ChartsPage({
 }) {
   const { m } = await searchParams;
   const month = parseMonth(m);
-  const [summary, categorySpend, dailyExpenses] = await Promise.all([
+  const [summary, categorySpend, dailyExpenses, homeCurrency] = await Promise.all([
     getMonthSummary(month),
     getCategorySpend(month),
     getDailyExpenses(month),
+    getHomeCurrency(),
   ]);
 
   const totalSpend = categorySpend.reduce((s, c) => s + c.amount, 0);
@@ -72,7 +73,7 @@ export default async function ChartsPage({
             </div>
             <div className={`mt-1 text-sm font-extrabold tracking-tight ${className}`}>
               {sign}
-              {formatMoney(value)}
+              {formatMoney(value, homeCurrency)}
             </div>
           </div>
         ))}
@@ -94,6 +95,7 @@ export default async function ChartsPage({
                 color: c.category.color,
               }))}
               total={totalSpend}
+              currency={homeCurrency}
             />
             <div className="mt-4 flex flex-col gap-3">
               {categorySpend.map(({ category, amount }) => {
@@ -108,7 +110,7 @@ export default async function ChartsPage({
                       <div className="mb-1 flex items-baseline justify-between">
                         <span className="text-[13px] font-semibold text-ink">{category.name}</span>
                         <span className="text-xs font-bold tracking-tight text-ink">
-                          {formatMoney(amount)}
+                          {formatMoney(amount, homeCurrency)}
                         </span>
                       </div>
                       <div className="h-1 overflow-hidden rounded-pill bg-background">

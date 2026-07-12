@@ -49,3 +49,25 @@ export const contributionSchema = z.object({
 export const enabledBanksSchema = z.object({
   banks: z.array(z.enum(BANK_IDS as [string, ...string[]])).min(1, "Selecciona al menos un banco"),
 });
+
+/** Captura por voz (Shortcut de iOS). Dos modos: rápido (campos directos)
+ *  y dictado (texto libre parseado con IA). La categoría del modo rápido se
+ *  revalida contra las categorías reales en el endpoint. */
+export const voiceEntrySchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("quick"),
+    category: z.string().trim().min(1, "Falta la categoría"),
+    amount: z.coerce.number().positive("El monto debe ser mayor que 0"),
+    description: z.string().trim().max(120).optional(),
+  }),
+  z.object({
+    mode: z.literal("dictate"),
+    text: z.string().trim().min(1, "No recibí ninguna frase"),
+  }),
+]);
+
+/** Alta de token de API (endpoint admin). */
+export const mintTokenSchema = z.object({
+  email: z.string().trim().email("Email inválido"),
+  home_currency: z.enum(["DOP", "USD", "EUR"]).optional(),
+});
