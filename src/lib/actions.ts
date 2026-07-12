@@ -105,10 +105,12 @@ export async function createTransaction(input: unknown): Promise<ActionResult> {
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
 
-  // Monto en USD: estampa la tasa del día para que los totales en RD$
-  // la usen. Fallo suave (null) — data.ts cae a la última tasa cacheada.
+  // La única tasa que conocemos es USD→DOP: estámpala solo en gastos USD
+  // para que los totales en RD$ la usen (fallo suave a null → data.ts cae a
+  // la última cacheada). En EUR no se estampa: un usuario de casa EUR ve sus
+  // totales en EUR sin conversión, y no tenemos tasa EUR→DOP.
   let exchangeRate: number | null = null;
-  if (parsed.data.currency !== "DOP") {
+  if (parsed.data.currency === "USD") {
     const { getUsdToDopRate } = await import("./exchange-rate");
     exchangeRate = await getUsdToDopRate();
   }
