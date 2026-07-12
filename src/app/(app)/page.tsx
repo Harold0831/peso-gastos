@@ -1,6 +1,12 @@
 import Link from "next/link";
-import { getBudgetsForMonth, getMonthSummary, getPendingCount, getTransactions } from "@/lib/data";
-import { formatMoney, formatMonthLabel, merchantInitials } from "@/lib/format";
+import {
+  getBudgetsForMonth,
+  getHomeCurrency,
+  getMonthSummary,
+  getPendingCount,
+  getTransactions,
+} from "@/lib/data";
+import { currencySymbol, formatMoney, formatMonthLabel, merchantInitials } from "@/lib/format";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { getGmailStatus, getUserById, requireUserId, type GmailStatus } from "@/lib/users";
 import { getCredentialsForUser } from "@/lib/webauthn";
@@ -42,11 +48,12 @@ export default async function DashboardPage() {
     hasPasskey = credentials.length > 0;
   }
 
-  const [summary, pendingCount, recent, budgets] = await Promise.all([
+  const [summary, pendingCount, recent, budgets, homeCurrency] = await Promise.all([
     getMonthSummary(now),
     getPendingCount(),
     getTransactions({ limit: 5 }),
     getBudgetsForMonth(now),
+    getHomeCurrency(),
   ]);
 
   const totalBudget = budgets.reduce((s, b) => s + b.budget.limit_amount, 0);
@@ -94,7 +101,8 @@ export default async function DashboardPage() {
         </div>
         <div className="mt-2 flex items-baseline gap-1.5">
           <span className="text-sm font-semibold text-ink-muted">
-            {summary.net < 0 ? "−RD$" : "RD$"}
+            {summary.net < 0 ? "−" : ""}
+            {currencySymbol(homeCurrency)}
           </span>
           <span
             className={`text-[38px] font-extrabold leading-none tracking-tighter ${
@@ -113,7 +121,7 @@ export default async function DashboardPage() {
             <div>
               <div className="text-[10px] font-medium text-ink-muted">Ingresos</div>
               <div className="text-[13px] font-bold tracking-tight text-income">
-                +{formatMoney(summary.income)}
+                +{formatMoney(summary.income, homeCurrency)}
               </div>
             </div>
           </div>
@@ -122,7 +130,7 @@ export default async function DashboardPage() {
             <div>
               <div className="text-[10px] font-medium text-ink-muted">Gastos</div>
               <div className="text-[13px] font-bold tracking-tight text-expense">
-                −{formatMoney(summary.expenses)}
+                −{formatMoney(summary.expenses, homeCurrency)}
               </div>
             </div>
           </div>

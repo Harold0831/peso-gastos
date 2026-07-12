@@ -1,9 +1,14 @@
 export type TransactionType = "expense" | "income";
 
-/** Monedas que los parsers de banco producen hoy. `amount` siempre se
- *  guarda en su moneda original; la conversión a DOP para reportes usa
- *  `exchange_rate` (ver exchange-rate.ts). */
-export type Currency = "DOP" | "USD";
+/** De dónde salió la transacción: parsing de correos, alta manual en la
+ *  web, o captura por voz (Shortcut de iOS). NULL en filas pre-migración 0005. */
+export type TransactionSource = "email" | "manual" | "voice";
+
+/** Monedas soportadas. `amount` siempre se guarda en su moneda original;
+ *  la conversión a la moneda de casa del usuario para reportes usa
+ *  `exchange_rate` (ver exchange-rate.ts). DOP/USD vienen del parsing de
+ *  correos; EUR de la captura por voz (Shortcut de iOS). */
+export type Currency = "DOP" | "USD" | "EUR";
 
 export interface Transaction {
   id: string;
@@ -23,6 +28,7 @@ export interface Transaction {
   ai_suggested_category: string | null;
   confirmed: boolean;
   notes: string | null;
+  source: TransactionSource | null;
   created_at: string;
   raw_email_snippet: string | null;
   /** Soft delete: no null → oculta de la UI, pero sigue en la tabla para

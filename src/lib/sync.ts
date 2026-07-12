@@ -143,6 +143,7 @@ export async function runSyncForUser(userId: string, newerThanDays?: number): Pr
       available_balance: parsed.available_balance,
       ai_suggested_category: suggestion?.category ?? null,
       confirmed: false,
+      source: "email",
       raw_email_snippet: email.snippet,
     });
 

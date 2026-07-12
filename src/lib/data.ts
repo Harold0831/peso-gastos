@@ -1,10 +1,11 @@
 import "server-only";
+import { cache } from "react";
 import { endOfMonth, startOfMonth } from "date-fns";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
-import { requireUserId } from "./users";
+import { getHomeCurrencyForUser, requireUserId } from "./users";
 import { getLatestCachedRate } from "./exchange-rate";
 import { MOCK_BUDGETS, MOCK_CATEGORIES, MOCK_GOALS, MOCK_TRANSACTIONS } from "./mock-data";
-import type { Budget, Category, SavingsGoal, Transaction } from "./types";
+import type { Budget, Category, Currency, SavingsGoal, Transaction } from "./types";
 
 /**
  * Capa de lectura de datos, siempre acotada al usuario de la sesión
@@ -37,17 +38,35 @@ function monthRange(month: Date): { from: string; to: string } {
 }
 
 /**
- * Convertidor de montos a RD$ para totales y gráficas. Las transacciones
- * en moneda extranjera usan la tasa estampada al sincronizarlas
- * (exchange_rate); las históricas sin tasa (pre-migración 0004) caen a la
- * última tasa cacheada — ese query solo se hace si de verdad hace falta.
- * Último recurso (sin tasa alguna): el monto se suma tal cual, el
- * comportamiento previo a multi-moneda.
+ * Moneda de casa del usuario en sesión (en la que ve totales/gráficas).
+ * Cacheada por request (`react.cache`) para no repetir el query en cada
+ * agregación de la misma página. En modo demo, DOP.
  */
-async function dopConverter(rows: Transaction[]): Promise<(t: Transaction) => number> {
-  const needsFallback = rows.some((t) => t.currency !== "DOP" && t.exchange_rate === null);
+export const getHomeCurrency = cache(async (): Promise<Currency> => {
+  if (!isSupabaseConfigured()) return "DOP";
+  return getHomeCurrencyForUser(await requireUserId());
+});
+
+/**
+ * Convertidor de montos a la moneda de casa del usuario para totales y
+ * gráficas. Las transacciones ya en esa moneda pasan tal cual (el caso de
+ * un usuario 100% EUR o 100% DOP: cero conversión). Las de otra moneda usan
+ * la tasa estampada al sincronizarlas (exchange_rate); las históricas sin
+ * tasa (pre-migración 0004) caen a la última tasa cacheada. Último recurso
+ * (sin tasa alguna): el monto se suma tal cual.
+ *
+ * Nota: la tasa cacheada es USD→DOP, así que la conversión cross-moneda
+ * solo es exacta para un usuario de casa DOP con gastos en USD (el caso de
+ * Harold). Un usuario EUR con gastos en otra moneda caería al fallback —
+ * hoy nadie está en ese caso (la captura por voz siempre usa EUR).
+ */
+async function homeConverter(
+  rows: Transaction[],
+  home: Currency,
+): Promise<(t: Transaction) => number> {
+  const needsFallback = rows.some((t) => t.currency !== home && t.exchange_rate === null);
   const fallback = needsFallback ? await getLatestCachedRate() : null;
-  return (t) => (t.currency === "DOP" ? t.amount : t.amount * (t.exchange_rate ?? fallback ?? 1));
+  return (t) => (t.currency === home ? t.amount : t.amount * (t.exchange_rate ?? fallback ?? 1));
 }
 
 export async function getTransactions(options?: {
@@ -113,9 +132,9 @@ export async function getPendingCount(): Promise<number> {
 
 export async function getMonthSummary(month: Date): Promise<MonthSummary> {
   const rows = await getTransactions({ month });
-  const toDop = await dopConverter(rows);
-  const income = rows.filter((t) => t.type === "income").reduce((s, t) => s + toDop(t), 0);
-  const expenses = rows.filter((t) => t.type === "expense").reduce((s, t) => s + toDop(t), 0);
+  const toHome = await homeConverter(rows, await getHomeCurrency());
+  const income = rows.filter((t) => t.type === "income").reduce((s, t) => s + toHome(t), 0);
+  const expenses = rows.filter((t) => t.type === "expense").reduce((s, t) => s + toHome(t), 0);
   return { income, expenses, net: income - expenses };
 }
 
@@ -147,14 +166,14 @@ export async function getBudgetsForMonth(month: Date): Promise<BudgetWithSpend[]
   }
 
   const byId = new Map(categories.map((c) => [c.id, c]));
-  const toDop = await dopConverter(transactions);
+  const toHome = await homeConverter(transactions, await getHomeCurrency());
   return budgets
     .map((budget) => {
       const category = byId.get(budget.category_id);
       if (!category) return null;
       const spent = transactions
         .filter((t) => t.type === "expense" && t.category === category.name)
-        .reduce((s, t) => s + toDop(t), 0);
+        .reduce((s, t) => s + toHome(t), 0);
       return { budget, category, spent };
     })
     .filter((b): b is BudgetWithSpend => b !== null);
@@ -182,11 +201,11 @@ export async function getCategorySpend(month: Date): Promise<CategorySpend[]> {
     getTransactions({ month }),
   ]);
   const totals = new Map<string, number>();
-  const toDop = await dopConverter(transactions);
+  const toHome = await homeConverter(transactions, await getHomeCurrency());
   for (const t of transactions) {
     if (t.type !== "expense") continue;
     const name = t.category ?? t.ai_suggested_category ?? "Otros";
-    totals.set(name, (totals.get(name) ?? 0) + toDop(t));
+    totals.set(name, (totals.get(name) ?? 0) + toHome(t));
   }
   const byName = new Map(categories.map((c) => [c.name, c]));
   const fallback = (name: string): Category => ({
@@ -206,10 +225,10 @@ export async function getDailyExpenses(month: Date): Promise<number[]> {
   const transactions = await getTransactions({ month });
   const days = endOfMonth(month).getDate();
   const result = new Array<number>(days).fill(0);
-  const toDop = await dopConverter(transactions);
+  const toHome = await homeConverter(transactions, await getHomeCurrency());
   for (const t of transactions) {
     if (t.type !== "expense") continue;
-    result[new Date(t.date).getDate() - 1] += toDop(t);
+    result[new Date(t.date).getDate() - 1] += toHome(t);
   }
   return result;
 }

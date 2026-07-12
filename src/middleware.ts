@@ -3,15 +3,24 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
 /**
  * Protege todas las rutas excepto /login, las rutas de auth, /api/sync,
- * /api/gmail-webhook y /api/gmail-watch (cada una protegida por su propio
- * mecanismo: Bearer SYNC_SECRET o el JWT de identidad de Pub/Sub) y los
- * assets de la PWA.
+ * /api/gmail-webhook, /api/gmail-watch, /api/voice-entry y /api/admin (cada
+ * una protegida por su propio mecanismo: Bearer SYNC_SECRET/ADMIN_SECRET,
+ * token de API por usuario, o el JWT de identidad de Pub/Sub) y los assets
+ * de la PWA.
  *
  * En dev sin Supabase configurado se deja pasar todo: no hay dónde guardar
  * credenciales de passkey, así que la app corre abierta con datos mock.
  */
 
-const PUBLIC_PATHS = ["/login", "/api/auth", "/api/sync", "/api/gmail-webhook", "/api/gmail-watch"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/api/auth",
+  "/api/sync",
+  "/api/gmail-webhook",
+  "/api/gmail-watch",
+  "/api/voice-entry",
+  "/api/admin",
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

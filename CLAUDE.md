@@ -27,7 +27,7 @@ Con Supabase configurado, el middleware exige sesión (login con Google).
 
 ```
 src/
-├── middleware.ts             # Protege todo excepto /login, /api/auth, /api/sync, /api/gmail-*
+├── middleware.ts             # Protege todo excepto /login, /api/auth, /api/sync, /api/gmail-*, /api/voice-entry, /api/admin
 ├── app/
 │   ├── layout.tsx            # Fuente Inter, meta PWA, theme script
 │   ├── manifest.ts           # Web manifest (→ /manifest.webmanifest)
@@ -52,12 +52,15 @@ src/
 │       │                       #   app-lock), logout
 │       ├── sync/               # GET Bearer SYNC_SECRET — sincroniza a TODOS
 │       ├── gmail-webhook/      # POST — push de Gmail, sincroniza al dueño del buzón
-│       └── gmail-watch/renew/  # GET Bearer CRON_SECRET — renueva watch de todos
+│       ├── gmail-watch/renew/  # GET Bearer CRON_SECRET — renueva watch de todos
+│       ├── voice-entry/        # POST Bearer <token> — captura desde Shortcut de iOS
+│       └── admin/mint-token/   # POST Bearer ADMIN_SECRET — genera token de un usuario
 ├── lib/
 │   ├── data.ts             # Lecturas, acotadas al usuario en sesión
 │   ├── actions.ts          # Server actions de mutación, acotadas al usuario
 │   ├── banks.ts            # Catálogo de bancos (ids/nombres) — client-safe
 │   ├── exchange-rate.ts    # Tasa USD→DOP con cache diaria (tabla exchange_rates)
+│   ├── api-token.ts        # Tokens de API por usuario (hash SHA-256) para el Shortcut
 │   ├── users.ts            # upsert desde Google, gmail_accounts, requireUserId()
 │   ├── google-oauth.ts     # Authorization code flow + verificación de id_token
 │   ├── crypto.ts           # AES-256-GCM para refresh tokens en la DB
@@ -84,6 +87,7 @@ supabase/
 ├── migrations/0002_...sql   # Soft delete de transacciones
 ├── migrations/0003_...sql   # Multi-usuario: users, gmail_accounts, user_id, feedback
 ├── migrations/0004_...sql   # Multi-moneda (exchange_rates, exchange_rate) + enabled_banks
+├── migrations/0005_...sql   # api_tokens, transactions.source, users.home_currency
 └── seed.sql                 # Categorías por defecto (compartidas entre usuarios)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
@@ -135,6 +139,32 @@ design/                      # Referencias visuales (no es código de la app)
   `exchange_rate` null. La UI muestra `US$`/`RD$` según `currency`
   (`formatMoney(amount, currency)`) y el detalle agrega "≈ RD$ …" con la
   tasa estampada.
+- **Moneda de casa por usuario** (`users.home_currency`, migración
+  `0005`): la moneda en la que un usuario ve sus totales/gráficas/
+  presupuestos. Default `DOP` (nadie cambia). `data.ts` → `getHomeCurrency()`
+  (cacheado por request con `react.cache`) + `homeConverter()`: las
+  transacciones ya en la moneda de casa pasan sin conversión (un usuario
+  100% EUR o 100% DOP no convierte nada), las demás usan `exchange_rate`.
+  Las páginas de agregación (dashboard, charts, budget, goals) reciben la
+  moneda de casa y la pasan a `formatMoney`. La lista de transacciones y el
+  detalle siguen mostrando cada fila en SU moneda original (`tx.currency`),
+  no en la de casa — son cosas distintas.
+- **Captura por voz — Shortcut de iOS** (`POST /api/voice-entry`, migración
+  `0005`): registra gastos sin sesión interactiva (un Shortcut no puede
+  hacer el flujo OAuth de Google). Auth por **token** de API por usuario
+  (`api-token.ts`): secreto largo aleatorio que vive en el Shortcut, en la
+  DB solo su **hash SHA-256** (tabla `api_tokens`). El token se genera con
+  `POST /api/admin/mint-token` (Bearer `ADMIN_SECRET`, busca al usuario por
+  email — que ya debe haber entrado a la app — y opcionalmente fija su
+  `home_currency`). Dos modos: `quick` (`{category, amount, description?}`,
+  inserta directo) y `dictate` (`{text}` → `parseVoiceEntry` en `gemini.ts`
+  extrae monto/descripción/categoría de habla natural; sin monto claro
+  devuelve 422 para que repita). Ambos: moneda = la de casa del usuario,
+  fecha = hoy, `confirmed=true`, `source='voice'`. Blast radius de un token
+  filtrado: bajo — el endpoint solo INSERTA transacciones de ese usuario.
+- **`transactions.source`** (migración `0005`): `'email'` (parsing de
+  correos), `'manual'` (alta web) o `'voice'` (Shortcut). NULL en filas
+  anteriores a la migración.
 - **Bancos por usuario** (`gmail_accounts.enabled_banks`, migración
   `0004`): array de ids del catálogo `banks.ts` (`qik`, `popular`,
   `caribe`, `scotiabank`, `bhd`); NULL = todos (default, nadie pierde
@@ -308,6 +338,7 @@ Project Settings → Environment Variables.
 | `GMAIL_WEBHOOK_AUDIENCE`                  | URL pública de /api/gmail-webhook, valida el JWT de Pub/Sub                                            | Tu dominio de Vercel                |
 | `GEMINI_API_KEY`                          | API key de Gemini                                                                                      | https://aistudio.google.com/apikey  |
 | `SYNC_SECRET`                             | Protege /api/sync (llamadas externas manuales)                                                         | `openssl rand -hex 32`              |
+| `ADMIN_SECRET`                            | Protege /api/admin/mint-token (genera el token de API de un usuario para el Shortcut de iOS)           | `openssl rand -hex 32`              |
 | `CRON_SECRET`                             | Protege /api/gmail-watch/renew — **debe llamarse así**, Vercel lo inyecta automáticamente en sus crons | `openssl rand -hex 32`              |
 | `SESSION_SECRET`                          | Firma la cookie JWT de sesión                                                                          | `openssl rand -base64 32`           |
 

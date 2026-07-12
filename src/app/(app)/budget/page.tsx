@@ -1,4 +1,4 @@
-import { getBudgetsForMonth, getCategories } from "@/lib/data";
+import { getBudgetsForMonth, getCategories, getHomeCurrency } from "@/lib/data";
 import { formatMoney, formatMonthLabel } from "@/lib/format";
 import { AddBudgetForm } from "./add-budget-form";
 
@@ -13,7 +13,11 @@ function barColor(pct: number): string {
 export default async function BudgetPage() {
   const now = new Date();
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const [budgets, categories] = await Promise.all([getBudgetsForMonth(now), getCategories()]);
+  const [budgets, categories, homeCurrency] = await Promise.all([
+    getBudgetsForMonth(now),
+    getCategories(),
+    getHomeCurrency(),
+  ]);
 
   const totalUsed = budgets.reduce((s, b) => s + b.spent, 0);
   const totalBudget = budgets.reduce((s, b) => s + b.budget.limit_amount, 0);
@@ -49,8 +53,8 @@ export default async function BudgetPage() {
             />
           </div>
           <div className="flex justify-between text-xs font-medium text-ink-muted">
-            <span className="font-semibold text-ink">{formatMoney(totalUsed)}</span>
-            <span>de {formatMoney(totalBudget)}</span>
+            <span className="font-semibold text-ink">{formatMoney(totalUsed, homeCurrency)}</span>
+            <span>de {formatMoney(totalBudget, homeCurrency)}</span>
           </div>
         </section>
       )}
@@ -105,8 +109,8 @@ export default async function BudgetPage() {
                 />
               </div>
               <p className="text-[11px] font-medium text-ink-muted">
-                <span className="font-semibold text-ink">{formatMoney(spent)}</span> usado de{" "}
-                {formatMoney(budget.limit_amount)}
+                <span className="font-semibold text-ink">{formatMoney(spent, homeCurrency)}</span>{" "}
+                usado de {formatMoney(budget.limit_amount, homeCurrency)}
               </p>
             </div>
           );
