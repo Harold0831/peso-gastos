@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
-import type { TransactionType } from "./types";
+import { currencySymbol } from "./format";
+import type { Currency, TransactionType } from "./types";
 
 /**
  * Categorización automática con gemini-2.0-flash vía REST.
@@ -33,6 +34,7 @@ export interface VoiceEntry {
 export async function suggestCategory(input: {
   merchant: string;
   amount: number;
+  currency: Currency;
   type: TransactionType;
   availableCategories: string[];
 }): Promise<CategorySuggestion | null> {
@@ -44,7 +46,7 @@ Clasifica esta transacción bancaria en UNA de las categorías disponibles.
 
 Transacción:
 - Comercio/remitente: ${input.merchant}
-- Monto: RD$ ${input.amount.toFixed(2)}
+- Monto: ${currencySymbol(input.currency)} ${input.amount.toFixed(2)}
 - Tipo: ${input.type === "expense" ? "gasto" : "ingreso"}
 
 Categorías disponibles: ${input.availableCategories.join(" | ")}
