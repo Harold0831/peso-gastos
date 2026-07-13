@@ -126,6 +126,7 @@ export async function runSyncForUser(userId: string, newerThanDays?: number): Pr
     const suggestion = await suggestCategory({
       merchant: parsed.merchant,
       amount: parsed.amount,
+      currency: parsed.currency,
       type: parsed.type,
       availableCategories: categoryNames,
     });

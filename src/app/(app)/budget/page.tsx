@@ -119,6 +119,7 @@ export default async function BudgetPage() {
         <AddBudgetForm
           month={monthKey}
           categories={available.map((c) => ({ id: c.id, name: c.name, icon: c.icon }))}
+          currency={homeCurrency}
         />
       </div>
     </main>

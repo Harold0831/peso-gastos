@@ -88,10 +88,8 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
           <div className="flex items-baseline justify-center gap-1.5">
             <span className="text-base font-bold text-ink-muted">{symbol}</span>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
-              step="0.01"
-              min="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               autoFocus

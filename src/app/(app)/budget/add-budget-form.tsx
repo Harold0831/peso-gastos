@@ -3,13 +3,17 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createBudget } from "@/lib/actions";
+import { currencySymbol } from "@/lib/format";
+import type { Currency } from "@/lib/types";
 
 export function AddBudgetForm({
   month,
   categories,
+  currency,
 }: {
   month: string;
   categories: { id: string; name: string; icon: string }[];
+  currency: Currency;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -69,13 +73,11 @@ export function AddBudgetForm({
         )}
       </div>
       <input
-        type="number"
+        type="text"
         inputMode="decimal"
-        min="1"
-        step="0.01"
         value={amount}
         onChange={(e) => setAmount(e.target.value)}
-        placeholder="Límite mensual (RD$)"
+        placeholder={`Límite mensual (${currencySymbol(currency)})`}
         className="mb-3 w-full rounded-btn border border-line bg-surface p-3 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-accent"
       />
       {error && <p className="mb-2 text-xs font-medium text-expense">{error}</p>}

@@ -105,10 +105,8 @@ function GoalCard({ goal, currency }: { goal: SavingsGoal; currency: Currency })
         (contributing ? (
           <div className="mt-3 flex gap-2">
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
-              min="1"
-              step="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder={`Monto (${currencySymbol(currency)})`}
@@ -214,10 +212,8 @@ function NewGoalForm({ currency }: { currency: Currency }) {
           className={inputClass}
         />
         <input
-          type="number"
+          type="text"
           inputMode="decimal"
-          min="1"
-          step="0.01"
           value={target}
           onChange={(e) => setTarget(e.target.value)}
           placeholder={`Monto objetivo (${currencySymbol(currency)})`}
