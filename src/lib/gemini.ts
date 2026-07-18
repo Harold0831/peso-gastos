@@ -20,7 +20,9 @@ export interface CategorySuggestion {
 }
 
 const voiceSchema = z.object({
-  amount: z.number().positive().nullable(),
+  // Gemini a veces devuelve el monto como texto ("10") pese a pedirle un
+  // número — coerce lo tolera; null sigue pasando intacto por nullable().
+  amount: z.coerce.number().positive().nullable(),
   description: z.string(),
   category: z.string(),
 });
