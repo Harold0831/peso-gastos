@@ -142,17 +142,34 @@ Responde SOLO con JSON: {"amount": <número o null>, "description": "<texto>", "
         }),
       },
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error("[parseVoiceEntry] Gemini respondió", res.status, await res.text());
+      return null;
+    }
 
     const data = (await res.json()) as {
       candidates?: { content?: { parts?: { text?: string }[] } }[];
     };
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return null;
+    if (!text) {
+      console.error("[parseVoiceEntry] Sin texto en la respuesta de Gemini:", JSON.stringify(data));
+      return null;
+    }
 
     const parsed = voiceSchema.safeParse(JSON.parse(text));
-    if (!parsed.success) return null;
-    if (parsed.data.amount === null) return null; // sin monto no hay transacción
+    if (!parsed.success) {
+      console.error(
+        "[parseVoiceEntry] Gemini devolvió:",
+        text,
+        "— error de validación:",
+        parsed.error.message,
+      );
+      return null;
+    }
+    if (parsed.data.amount === null) {
+      console.error("[parseVoiceEntry] Gemini no encontró un monto en:", input.text);
+      return null; // sin monto no hay transacción
+    }
 
     // Categoría inventada → "Otros" (la lista siempre la incluye).
     const category = input.availableCategories.includes(parsed.data.category)
@@ -163,7 +180,8 @@ Responde SOLO con JSON: {"amount": <número o null>, "description": "<texto>", "
       description: parsed.data.description.trim() || "Gasto",
       category,
     };
-  } catch {
+  } catch (err) {
+    console.error("[parseVoiceEntry] Excepción:", err);
     return null;
   }
 }
