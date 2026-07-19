@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { startRegistration } from "@simplewebauthn/browser";
-import { logoutAction, sendFeedback, setEnabledBanks } from "@/lib/actions";
+import { disableFaceId, logoutAction, sendFeedback, setEnabledBanks } from "@/lib/actions";
 import { markAuthenticated } from "@/lib/app-lock";
 import { SUPPORTED_BANKS } from "@/lib/banks";
 import { merchantInitials } from "@/lib/format";
+import { useToast } from "@/components/toast";
 
 interface ProfileClientProps {
   name: string;
@@ -32,8 +33,33 @@ export function ProfileClient({
   demoMode,
 }: ProfileClientProps) {
   const router = useRouter();
+  const toast = useToast();
   const [faceIdError, setFaceIdError] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
+  const [disabling, startDisabling] = useTransition();
+  const [confirmingDisable, setConfirmingDisable] = useState(false);
+  // Plataforma para las instrucciones de instalación de la PWA. Se detecta
+  // tras el montaje (el user agent no existe en el render del servidor);
+  // default iOS, el público principal de la app.
+  const [platform, setPlatform] = useState<"ios" | "android">("ios");
+
+  useEffect(() => {
+    if (/android/i.test(navigator.userAgent)) setPlatform("android");
+  }, []);
+
+  const handleDisableFaceId = () => {
+    startDisabling(async () => {
+      const result = await disableFaceId();
+      if (!result.ok) {
+        setFaceIdError(result.error ?? "No se pudo desactivar");
+        setConfirmingDisable(false);
+        return;
+      }
+      toast("Face ID desactivado");
+      setConfirmingDisable(false);
+      router.refresh();
+    });
+  };
   const [feedback, setFeedback] = useState("");
   const [feedbackState, setFeedbackState] = useState<"idle" | "sent" | "error">("idle");
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
@@ -214,12 +240,43 @@ export function ProfileClient({
       <section className={sectionClass}>
         <h2 className={labelClass}>Bloqueo con Face ID</h2>
         {hasPasskey ? (
-          <div className="mt-3 flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-pill bg-income" />
-            <p className="text-[13px] font-medium text-ink">
-              Activado — la app pide Face ID al abrirla o tras 30s en segundo plano
-            </p>
-          </div>
+          <>
+            <div className="mt-3 flex items-center gap-2.5">
+              <span className="h-2 w-2 rounded-pill bg-income" />
+              <p className="text-[13px] font-medium text-ink">
+                Activado — la app pide Face ID al abrirla o tras 30s en segundo plano
+              </p>
+            </div>
+            {confirmingDisable ? (
+              <div className="mt-3 flex items-center gap-2 rounded-btn border border-expense/30 bg-expense/5 p-3">
+                <span className="flex-1 text-[13px] font-medium text-ink">
+                  ¿Desactivar el bloqueo?
+                </span>
+                <button
+                  onClick={() => setConfirmingDisable(false)}
+                  disabled={disabling}
+                  className="rounded-btn border border-line px-3 py-2 text-[13px] font-semibold text-ink"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDisableFaceId}
+                  disabled={disabling}
+                  className="rounded-btn bg-expense px-3 py-2 text-[13px] font-bold text-white disabled:opacity-60"
+                >
+                  {disabling ? "…" : "Sí, desactivar"}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmingDisable(true)}
+                className="mt-2 w-full py-2 text-center text-[13px] font-semibold text-expense"
+              >
+                Desactivar Face ID
+              </button>
+            )}
+            {faceIdError && <p className="mt-1 text-xs font-medium text-expense">{faceIdError}</p>}
+          </>
         ) : (
           <>
             <p className="mt-3 text-[13px] leading-relaxed text-ink-muted">
@@ -238,19 +295,33 @@ export function ProfileClient({
         )}
       </section>
 
-      {/* Instalación PWA */}
+      {/* Instalación PWA — instrucciones según la plataforma detectada */}
       <section className={sectionClass}>
-        <h2 className={labelClass}>Instalar en tu iPhone</h2>
-        <ol className="mt-3 list-inside list-decimal space-y-1.5 text-[13px] leading-relaxed text-ink-muted">
-          <li>Abre esta página en Safari</li>
-          <li>
-            Toca el botón <span className="font-semibold text-ink">Compartir</span> (cuadro con
-            flecha)
-          </li>
-          <li>
-            Elige <span className="font-semibold text-ink">Agregar a inicio</span>
-          </li>
-        </ol>
+        <h2 className={labelClass}>
+          {platform === "android" ? "Instalar en tu Android" : "Instalar en tu iPhone"}
+        </h2>
+        {platform === "android" ? (
+          <ol className="mt-3 list-inside list-decimal space-y-1.5 text-[13px] leading-relaxed text-ink-muted">
+            <li>Abre esta página en Chrome</li>
+            <li>
+              Toca el menú <span className="font-semibold text-ink">⋮</span> (arriba a la derecha)
+            </li>
+            <li>
+              Elige <span className="font-semibold text-ink">Agregar a pantalla principal</span>
+            </li>
+          </ol>
+        ) : (
+          <ol className="mt-3 list-inside list-decimal space-y-1.5 text-[13px] leading-relaxed text-ink-muted">
+            <li>Abre esta página en Safari</li>
+            <li>
+              Toca el botón <span className="font-semibold text-ink">Compartir</span> (cuadro con
+              flecha)
+            </li>
+            <li>
+              Elige <span className="font-semibold text-ink">Agregar a inicio</span>
+            </li>
+          </ol>
+        )}
       </section>
 
       {/* Feedback */}

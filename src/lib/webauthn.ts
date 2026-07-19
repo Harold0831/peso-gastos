@@ -60,3 +60,12 @@ export async function updateCounter(id: string, counter: number): Promise<void> 
     .eq("id", id);
   if (error) throw new Error(`Error actualizando counter: ${error.message}`);
 }
+
+/** Borra TODOS los passkeys del usuario — desactiva el bloqueo con Face ID. */
+export async function deleteCredentialsForUser(userId: string): Promise<void> {
+  const { error } = await getSupabaseAdmin()
+    .from("webauthn_credentials")
+    .delete()
+    .eq("user_id", userId);
+  if (error) throw new Error(`Error borrando credenciales: ${error.message}`);
+}

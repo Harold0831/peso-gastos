@@ -6,6 +6,7 @@ import { differenceInCalendarDays } from "date-fns";
 import type { Currency, SavingsGoal } from "@/lib/types";
 import { currencySymbol, formatMoney } from "@/lib/format";
 import { contributeToGoal, createGoal } from "@/lib/actions";
+import { useToast } from "@/components/toast";
 
 export function GoalsList({ goals, currency }: { goals: SavingsGoal[]; currency: Currency }) {
   return (
@@ -30,6 +31,7 @@ export function GoalsList({ goals, currency }: { goals: SavingsGoal[]; currency:
 
 function GoalCard({ goal, currency }: { goal: SavingsGoal; currency: Currency }) {
   const router = useRouter();
+  const toast = useToast();
   const [contributing, setContributing] = useState(false);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,7 @@ function GoalCard({ goal, currency }: { goal: SavingsGoal; currency: Currency })
         setError(result.error ?? "No se pudo guardar el abono");
         return;
       }
+      toast("✓ Abono guardado");
       setContributing(false);
       setAmount("");
       router.refresh();
@@ -145,6 +148,7 @@ const GOAL_ICONS = ["🎯", "🛟", "📱", "🏝️", "🚗", "🏠", "🎓", "
 
 function NewGoalForm({ currency }: { currency: Currency }) {
   const router = useRouter();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [target, setTarget] = useState("");
@@ -177,6 +181,7 @@ function NewGoalForm({ currency }: { currency: Currency }) {
         setError(result.error ?? "No se pudo crear la meta");
         return;
       }
+      toast("✓ Meta creada");
       setOpen(false);
       setName("");
       setTarget("");

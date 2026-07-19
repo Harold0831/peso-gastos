@@ -14,6 +14,7 @@ type FormInput = z.input<typeof transactionSchema>;
 import { createTransaction } from "@/lib/actions";
 import { currencySymbol } from "@/lib/format";
 import { BackIcon } from "@/components/icons";
+import { useToast } from "@/components/toast";
 
 /**
  * Monedas que se ofrecen según la moneda de casa. Solo tiene sentido ofrecer
@@ -34,6 +35,7 @@ export function NewTransactionForm({
   homeCurrency: Currency;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
   const currencyOptions = currencyOptionsFor(homeCurrency);
@@ -68,6 +70,7 @@ export function NewTransactionForm({
         setServerError(result.error ?? "No se pudo guardar");
         return;
       }
+      toast(data.type === "expense" ? "✓ Gasto guardado" : "✓ Ingreso guardado");
       router.push("/transactions");
       router.refresh();
     });
@@ -182,7 +185,9 @@ export function NewTransactionForm({
           <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-ink">
             Categoría
           </label>
-          <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5">
+          {/* flex-wrap: con 9 categorías el scroll horizontal escondía la
+              mitad — todas visibles cuesta 2-3 filas y cero descubrimiento */}
+          <div className="flex flex-wrap gap-2">
             {categories.map((name) => (
               <button
                 key={name}

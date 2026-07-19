@@ -85,7 +85,15 @@ export default async function ChartsPage({
           Por categoría
         </h2>
         {categorySpend.length === 0 ? (
-          <p className="py-8 text-center text-sm text-ink-muted">Sin gastos este mes.</p>
+          <div className="py-8 text-center">
+            <p className="text-sm text-ink-muted">Sin gastos este mes.</p>
+            <Link
+              href="/transactions/new"
+              className="mt-3 inline-block rounded-btn border border-line bg-surface px-4 py-2.5 text-[13px] font-semibold text-ink"
+            >
+              + Agregar gasto
+            </Link>
+          </div>
         ) : (
           <>
             <CategoryDonut

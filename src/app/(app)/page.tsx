@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  getBudgetsForMonth,
+  getGoals,
   getHomeCurrency,
   getMonthSummary,
   getPendingCount,
@@ -11,9 +11,10 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import { getGmailStatus, getUserById, requireUserId, type GmailStatus } from "@/lib/users";
 import { getCredentialsForUser } from "@/lib/webauthn";
 import { Donut } from "@/components/donut";
+import { Dismissible } from "@/components/dismissible";
 import { OnboardingCard } from "@/components/onboarding-card";
 import { TxRow } from "@/components/tx-row";
-import { BellIcon, ChevronIcon, WalletIcon } from "@/components/icons";
+import { BellIcon, ChevronIcon, TargetIcon } from "@/components/icons";
 
 export const dynamic = "force-dynamic";
 
@@ -48,17 +49,17 @@ export default async function DashboardPage() {
     hasPasskey = credentials.length > 0;
   }
 
-  const [summary, pendingCount, recent, budgets, homeCurrency] = await Promise.all([
+  const [summary, pendingCount, recent, goals, homeCurrency] = await Promise.all([
     getMonthSummary(now),
     getPendingCount(),
     getTransactions({ limit: 5 }),
-    getBudgetsForMonth(now),
+    getGoals(),
     getHomeCurrency(),
   ]);
 
-  const totalBudget = budgets.reduce((s, b) => s + b.budget.limit_amount, 0);
-  const totalSpent = budgets.reduce((s, b) => s + b.spent, 0);
-  const budgetPct = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : null;
+  // Presupuesto ahora vive en la barra de navegación; esta tarjeta da el
+  // acceso a Metas (la pantalla que salió del nav por ser de uso esporádico).
+  const activeGoals = goals.filter((g) => g.current_amount < g.target_amount).length;
 
   // Usuario recién llegado: sin transacciones aún. La guía de primeros
   // pasos reemplaza a los banners sueltos hasta el primer movimiento.
@@ -140,50 +141,71 @@ export default async function DashboardPage() {
       {/* Guía de primeros pasos (solo sin transacciones) */}
       {isNewUser && <OnboardingCard gmailLinked={gmail.linked && gmail.syncEnabled} />}
 
-      {/* Vincular/reconectar Gmail */}
-      {!isNewUser && (!gmail.linked || !gmail.syncEnabled) && (
+      {/* Reconectar Gmail — NO descartable: es una rotura real del sync */}
+      {!isNewUser && gmail.linked && !gmail.syncEnabled && (
         <Link
           href="/profile"
-          className="mt-3.5 flex items-center gap-3 rounded-[14px] border border-accent/30 bg-accent/5 px-4 py-3"
+          className="mt-3.5 flex items-center gap-3 rounded-[14px] border border-warning/40 bg-warning/10 px-4 py-3"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-accent/10 text-base">
+          <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-warning/10 text-base">
             ✉️
           </span>
           <span className="flex-1">
             <span className="block text-[13px] font-semibold text-ink">
-              {gmail.linked
-                ? "El acceso a tu Gmail expiró"
-                : "Vincula tu Gmail para importar transacciones"}
+              El acceso a tu Gmail expiró
             </span>
             <span className="block text-[11px] text-ink-muted">
-              {gmail.linked
-                ? "Reconéctalo para que el sync siga funcionando · Toca aquí"
-                : "Peso solo lee las notificaciones de tus bancos · Toca para configurar"}
+              Reconéctalo para que el sync siga funcionando · Toca aquí
             </span>
           </span>
           <ChevronIcon className="text-ink-muted" />
         </Link>
       )}
 
-      {/* Activar Face ID (solo si Gmail ya está resuelto, un banner a la vez) */}
+      {/* Vincular Gmail — descartable: usar la app 100% manual es válido */}
+      {!isNewUser && !gmail.linked && (
+        <Dismissible storageKey="peso-banner-gmail" className="mt-3.5">
+          <Link
+            href="/profile"
+            className="flex items-center gap-3 rounded-[14px] border border-accent/30 bg-accent/5 px-4 py-3 pr-10"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-accent/10 text-base">
+              ✉️
+            </span>
+            <span className="flex-1">
+              <span className="block text-[13px] font-semibold text-ink">
+                Vincula tu Gmail para importar transacciones
+              </span>
+              <span className="block text-[11px] text-ink-muted">
+                Peso solo lee las notificaciones de tus bancos · Toca para configurar
+              </span>
+            </span>
+            <ChevronIcon className="text-ink-muted" />
+          </Link>
+        </Dismissible>
+      )}
+
+      {/* Activar Face ID — descartable: es opcional y la opción vive en el perfil */}
       {gmail.linked && gmail.syncEnabled && !hasPasskey && (
-        <Link
-          href="/profile"
-          className="mt-3.5 flex items-center gap-3 rounded-[14px] border border-accent/30 bg-accent/5 px-4 py-3"
-        >
-          <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-accent/10 text-base">
-            🔒
-          </span>
-          <span className="flex-1">
-            <span className="block text-[13px] font-semibold text-ink">
-              Protege tu app con Face ID
+        <Dismissible storageKey="peso-banner-faceid" className="mt-3.5">
+          <Link
+            href="/profile"
+            className="flex items-center gap-3 rounded-[14px] border border-accent/30 bg-accent/5 px-4 py-3 pr-10"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-accent/10 text-base">
+              🔒
             </span>
-            <span className="block text-[11px] text-ink-muted">
-              Pide tu identidad al abrir la app · Actívalo en tu perfil
+            <span className="flex-1">
+              <span className="block text-[13px] font-semibold text-ink">
+                Protege tu app con Face ID
+              </span>
+              <span className="block text-[11px] text-ink-muted">
+                Pide tu identidad al abrir la app · Actívalo en tu perfil
+              </span>
             </span>
-          </span>
-          <ChevronIcon className="text-ink-muted" />
-        </Link>
+            <ChevronIcon className="text-ink-muted" />
+          </Link>
+        </Dismissible>
       )}
 
       {/* Pendientes */}
@@ -209,18 +231,22 @@ export default async function DashboardPage() {
         </Link>
       )}
 
-      {/* Acceso a presupuesto */}
+      {/* Acceso a metas de ahorro */}
       <Link
-        href="/budget"
+        href="/goals"
         className="mt-3.5 flex items-center gap-3 rounded-[14px] border border-line bg-surface px-4 py-3"
       >
         <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-background text-ink">
-          <WalletIcon size={18} />
+          <TargetIcon size={18} />
         </span>
         <span className="flex-1">
-          <span className="block text-[13px] font-semibold text-ink">Presupuesto del mes</span>
+          <span className="block text-[13px] font-semibold text-ink">Metas de ahorro</span>
           <span className="block text-[11px] text-ink-muted">
-            {budgetPct === null ? "Aún sin presupuestos" : `${budgetPct}% utilizado`}
+            {goals.length === 0
+              ? "Crea tu primera meta"
+              : activeGoals === 0
+                ? "🎉 Todas tus metas completadas"
+                : `${activeGoals} ${activeGoals === 1 ? "meta activa" : "metas activas"}`}
           </span>
         </span>
         <ChevronIcon className="text-ink-muted" />

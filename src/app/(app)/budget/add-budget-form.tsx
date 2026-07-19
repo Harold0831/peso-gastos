@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createBudget } from "@/lib/actions";
 import { currencySymbol } from "@/lib/format";
+import { useToast } from "@/components/toast";
 import type { Currency } from "@/lib/types";
 
 export function AddBudgetForm({
@@ -16,6 +17,7 @@ export function AddBudgetForm({
   currency: Currency;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
@@ -41,6 +43,7 @@ export function AddBudgetForm({
         setError(result.error ?? "No se pudo guardar");
         return;
       }
+      toast("✓ Presupuesto guardado");
       setOpen(false);
       setCategoryId("");
       setAmount("");

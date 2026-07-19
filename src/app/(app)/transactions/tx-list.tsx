@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Transaction } from "@/lib/types";
 import { formatDayLabel } from "@/lib/format";
@@ -8,6 +9,7 @@ import { confirmTransactionsBulk, syncNow } from "@/lib/actions";
 import { TxRow } from "@/components/tx-row";
 import { RefreshIcon } from "@/components/icons";
 import { PullToRefresh } from "@/components/pull-to-refresh";
+import { useToast } from "@/components/toast";
 
 type Filter = "todos" | "gastos" | "ingresos" | "pendientes";
 
@@ -17,6 +19,54 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: "ingresos", label: "Ingresos" },
   { id: "pendientes", label: "Por confirmar" },
 ];
+
+/** Estados vacíos accionables: "por confirmar" vacío es una buena noticia,
+ *  y la lista vacía ofrece los dos caminos (manual o sync) en vez de un
+ *  callejón sin salida. */
+function EmptyState({
+  filter,
+  syncing,
+  onSync,
+}: {
+  filter: Filter;
+  syncing: boolean;
+  onSync: () => void;
+}) {
+  if (filter === "pendientes") {
+    return (
+      <div className="px-5 py-12 text-center">
+        <p className="text-2xl">🎉</p>
+        <p className="mt-2 text-sm font-semibold text-ink">Nada por confirmar</p>
+        <p className="mt-1 text-[13px] text-ink-muted">Todas tus transacciones están al día.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="px-5 py-12 text-center">
+      <p className="text-sm font-semibold text-ink">
+        {filter === "todos" ? "Sin transacciones todavía" : "Nada por aquí con este filtro"}
+      </p>
+      <p className="mt-1 text-[13px] text-ink-muted">
+        Llegarán solas desde tu correo, o agrega una a mano.
+      </p>
+      <div className="mt-4 flex justify-center gap-2">
+        <Link
+          href="/transactions/new"
+          className="rounded-btn bg-accent px-4 py-2.5 text-[13px] font-bold text-white"
+        >
+          + Agregar gasto
+        </Link>
+        <button
+          onClick={onSync}
+          disabled={syncing}
+          className="rounded-btn border border-line bg-surface px-4 py-2.5 text-[13px] font-semibold text-ink disabled:opacity-50"
+        >
+          {syncing ? "Sincronizando…" : "Sincronizar"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export function TxList({
   transactions,
@@ -28,11 +78,11 @@ export function TxList({
   categories: string[];
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [filter, setFilter] = useState<Filter>(
     FILTERS.some((f) => f.id === initialFilter) ? (initialFilter as Filter) : "todos",
   );
   const [syncing, startSync] = useTransition();
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -121,22 +171,24 @@ export function TxList({
         setBulkError(result.error ?? "No se pudo confirmar");
         return;
       }
+      toast(
+        `✓ ${selectedIds.size} ${selectedIds.size === 1 ? "transacción confirmada" : "transacciones confirmadas"}`,
+      );
       exitSelectionMode();
       router.refresh();
     });
   };
 
   const handleSync = () => {
-    setSyncMessage(null);
     startSync(async () => {
       const result = await syncNow();
       if (!result.ok) {
-        setSyncMessage(result.error ?? "Error al sincronizar");
+        toast(result.error ?? "Error al sincronizar", "error");
       } else {
-        setSyncMessage(
+        toast(
           result.synced === 0
             ? "Sin transacciones nuevas"
-            : `${result.synced} ${result.synced === 1 ? "nueva transacción" : "nuevas transacciones"}`,
+            : `✓ ${result.synced} ${result.synced === 1 ? "nueva transacción" : "nuevas transacciones"}`,
         );
         router.refresh();
       }
@@ -157,10 +209,6 @@ export function TxList({
             <RefreshIcon className={syncing ? "animate-spin" : undefined} />
           </button>
         </div>
-
-        {syncMessage && (
-          <p className="px-5 pb-2 text-xs font-medium text-ink-muted">{syncMessage}</p>
-        )}
 
         {/* Filter chips */}
         <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-3">
@@ -219,9 +267,7 @@ export function TxList({
         )}
 
         {groups.length === 0 ? (
-          <p className="px-5 py-12 text-center text-sm text-ink-muted">
-            No hay transacciones con este filtro.
-          </p>
+          <EmptyState filter={filter} syncing={syncing} onSync={handleSync} />
         ) : (
           groups.map(([day, items]) => (
             <section key={day} className="mb-3">

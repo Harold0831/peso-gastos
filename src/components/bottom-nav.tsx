@@ -2,13 +2,16 @@
 
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
-import { ChartIcon, HomeIcon, ListIcon, PlusIcon, TargetIcon } from "./icons";
+import { ChartIcon, HomeIcon, ListIcon, PlusIcon, WalletIcon } from "./icons";
 
+// Presupuesto en el nav y Metas fuera (accesible desde la tarjeta del
+// dashboard): el presupuesto es parte del loop semanal de revisar gastos;
+// las metas se tocan esporádicamente. Lo frecuente merece el tap directo.
 const items = [
   { href: "/", label: "Inicio", icon: HomeIcon },
   { href: "/transactions", label: "Transacciones", icon: ListIcon },
   { href: "/charts", label: "Gráficas", icon: ChartIcon },
-  { href: "/goals", label: "Metas", icon: TargetIcon },
+  { href: "/budget", label: "Presupuesto", icon: WalletIcon },
 ] as const;
 
 /** Opacidad reducida mientras Next resuelve la navegación — feedback inmediato al tocar. */
