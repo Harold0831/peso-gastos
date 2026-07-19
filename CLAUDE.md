@@ -93,6 +93,7 @@ supabase/
 ├── migrations/0004_...sql   # Multi-moneda (exchange_rates, exchange_rate) + enabled_banks
 ├── migrations/0005_...sql   # api_tokens, transactions.source, users.home_currency
 ├── migrations/0006_...sql   # push_subscriptions (Web Push por dispositivo)
+├── migrations/0007_...sql   # notification_dismissals (descartes de la bandeja)
 └── seed.sql                 # Categorías por defecto (compartidas entre usuarios)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)

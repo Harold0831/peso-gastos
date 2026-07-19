@@ -5,6 +5,7 @@ import {
   getGoals,
   getHomeCurrency,
   getMonthSummary,
+  getPendingCount,
   getTransactions,
 } from "@/lib/data";
 import { currencySymbol, formatMoney, formatMonthLabel, merchantInitials } from "@/lib/format";
@@ -50,15 +51,16 @@ export default async function DashboardPage() {
     hasPasskey = credentials.length > 0;
   }
 
-  const [summary, prevSummary, attention, recent, goals, homeCurrency] = await Promise.all([
-    getMonthSummary(now),
-    getMonthSummary(subMonths(now, 1)),
-    getAttentionItems(),
-    getTransactions({ limit: 5 }),
-    getGoals(),
-    getHomeCurrency(),
-  ]);
-  const pendingCount = attention.filter((i) => i.kind === "pending").length;
+  const [summary, prevSummary, attention, pendingCount, recent, goals, homeCurrency] =
+    await Promise.all([
+      getMonthSummary(now),
+      getMonthSummary(subMonths(now, 1)),
+      getAttentionItems(),
+      getPendingCount(),
+      getTransactions({ limit: 5 }),
+      getGoals(),
+      getHomeCurrency(),
+    ]);
 
   // Comparación de gastos vs el mes anterior — el "ajá" de una app de
   // finanzas está en el delta, no en el número absoluto.
