@@ -81,7 +81,9 @@ src/
 │   ├── webauthn-client.ts    # verifyPasskey() — usado por LockScreen
 │   └── app-lock.ts           # Umbral de re-bloqueo (sessionStorage)
 ├── components/                # BottomNav, TxRow, Donut, PullToRefresh, Skeleton,
-│                               # AppLockGate + LockScreen (re-bloqueo con Face ID)
+│                               # AppLockGate + LockScreen (re-bloqueo con Face ID),
+│                               # Toast (feedback de mutaciones), Dismissible
+│                               # (banners descartables), OnboardingCard
 supabase/
 ├── migrations/0001_init.sql # Tablas base + RLS
 ├── migrations/0002_...sql   # Soft delete de transacciones
@@ -511,6 +513,16 @@ activa el bloqueo por el `useState(false)` inicial del gate.
   (topic + IAM + subscription) — ver § Gmail Push. El sync manual (botón,
   pull-to-refresh, `GET /api/sync`) queda como respaldo si el webhook
   falla o mientras configuras todo por primera vez.
+- **Convenciones de UX** (2026-07-18): toda mutación confirma con un toast
+  (`useToast()`, provider en el layout de `(app)`) — nunca terminar una
+  acción en silencio. Los banners promocionales/opcionales del dashboard
+  (vincular Gmail, Face ID) son descartables con memoria (`Dismissible`,
+  localStorage); el de "reconectar Gmail" NO es descartable a propósito
+  (es una rotura real del sync). Estados vacíos siempre con acción (CTA o
+  celebración), nunca un callejón sin salida. En el nav va Presupuesto
+  (uso semanal) y Metas quedó como tarjeta del dashboard (uso esporádico).
+  Errores de Supabase pasan por `friendlyDbError()` (mensaje humano en
+  español; el crudo va a console.error para los logs de Vercel).
 - **`loading.tsx` por ruta en vez de spinners manuales.** Next.js App
   Router activa el archivo `loading.tsx` de cada segmento automáticamente
   vía Suspense mientras el server component espera datos — no hay que

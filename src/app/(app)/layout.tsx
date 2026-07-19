@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { BottomNav } from "@/components/bottom-nav";
 import { AppLockGate } from "@/components/app-lock-gate";
+import { ToastProvider } from "@/components/toast";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { SESSION_COOKIE, readSessionUserId } from "@/lib/session";
 import { getCredentialsForUser } from "@/lib/webauthn";
@@ -20,10 +21,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AppLockGate enabled={lockEnabled}>
-      <div className="mx-auto min-h-dvh max-w-lg pb-28">
-        <div className="animate-screen-in">{children}</div>
-        <BottomNav />
-      </div>
+      <ToastProvider>
+        <div className="mx-auto min-h-dvh max-w-lg pb-28">
+          <div className="animate-screen-in">{children}</div>
+          <BottomNav />
+        </div>
+      </ToastProvider>
     </AppLockGate>
   );
 }

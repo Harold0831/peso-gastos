@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { SUPPORTED_BANKS } from "@/lib/banks";
 
@@ -39,10 +42,21 @@ function Step({
 
 /**
  * Guía de primeros pasos, mostrada en el dashboard solo mientras el
- * usuario no tiene transacciones. Desaparece sola con el primer
- * movimiento (importado o manual) — no necesita estado de "descartar".
+ * usuario no tiene transacciones. Desaparece sola con el primer movimiento
+ * — y también puede omitirse a mano (localStorage): forzar a alguien a
+ * completar pasos opcionales para limpiar su pantalla es fatiga de avisos.
+ * El paso de bancos se marca hecho al vincular Gmail: todos vienen
+ * activados por defecto, ajustar la lista es opcional (vive en /profile).
  */
 export function OnboardingCard({ gmailLinked }: OnboardingCardProps) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    setVisible(localStorage.getItem("peso-onboarding") !== "1");
+  }, []);
+
+  if (!visible) return null;
+
   const bankNames = SUPPORTED_BANKS.map((b) => b.name).join(", ");
   return (
     <section className="mt-3.5 rounded-card border border-line bg-card p-5">
@@ -59,10 +73,10 @@ export function OnboardingCard({ gmailLinked }: OnboardingCardProps) {
           detail="Peso solo lee las notificaciones de tus bancos, nada más."
         />
         <Step
-          done={false}
+          done={gmailLinked}
           number={3}
           title="Elige tus bancos"
-          detail={`Soportamos ${bankNames}. Todos vienen activados — desmarca los que no uses en tu perfil.`}
+          detail={`Soportamos ${bankNames}. Todos quedan activados — desmarca los que no uses en tu perfil.`}
         />
         <Step
           done={false}
@@ -87,6 +101,15 @@ export function OnboardingCard({ gmailLinked }: OnboardingCardProps) {
           Vincular Gmail
         </a>
       )}
+      <button
+        onClick={() => {
+          localStorage.setItem("peso-onboarding", "1");
+          setVisible(false);
+        }}
+        className="mt-1.5 w-full py-2.5 text-center text-[13px] font-semibold text-ink-muted"
+      >
+        Omitir por ahora
+      </button>
     </section>
   );
 }

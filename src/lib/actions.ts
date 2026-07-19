@@ -21,6 +21,21 @@ export interface ActionResult {
 
 const MOCK_MODE_ERROR = "Modo demo: configura Supabase en .env.local para guardar cambios reales.";
 
+/**
+ * Convierte errores crudos de Supabase/PostgREST (en inglés técnico, ej.
+ * "duplicate key value violates unique constraint …") en un mensaje humano
+ * en español. El detalle original va a console.error — visible en los logs
+ * de Vercel para depurar, invisible para el usuario.
+ */
+function friendlyDbError(error: { code?: string; message: string }, context: string): string {
+  console.error(`[${context}]`, error.code ?? "", error.message);
+  if (error.code === "23505") return "Ya existe un registro igual — revisa si está duplicado.";
+  if (/fetch failed|network|timeout/i.test(error.message)) {
+    return "No hay conexión con el servidor. Revisa tu internet e intenta de nuevo.";
+  }
+  return "No se pudo guardar. Intenta de nuevo en un momento.";
+}
+
 function revalidateAll() {
   for (const path of ["/", "/transactions", "/charts", "/budget", "/goals"]) {
     revalidatePath(path);
@@ -47,7 +62,7 @@ export async function confirmTransaction(input: {
     })
     .eq("id", parsed.data.id)
     .eq("user_id", await requireUserId());
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyDbError(error, "confirmTransaction") };
 
   revalidateAll();
   return { ok: true };
@@ -72,7 +87,7 @@ export async function confirmTransactionsBulk(input: {
     .update({ category: parsed.data.category, confirmed: true })
     .in("id", parsed.data.ids)
     .eq("user_id", await requireUserId());
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyDbError(error, "confirmTransactionsBulk") };
 
   revalidateAll();
   return { ok: true };
@@ -94,7 +109,7 @@ export async function deleteTransaction(id: string): Promise<ActionResult> {
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", id)
     .eq("user_id", await requireUserId());
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyDbError(error, "deleteTransaction") };
 
   revalidateAll();
   return { ok: true };
@@ -130,7 +145,7 @@ export async function createTransaction(input: unknown): Promise<ActionResult> {
       confirmed: true,
       source: "manual",
     });
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyDbError(error, "createTransaction") };
 
   revalidateAll();
   return { ok: true };
@@ -146,7 +161,7 @@ export async function setEnabledBanks(input: unknown): Promise<ActionResult> {
     .from("gmail_accounts")
     .update({ enabled_banks: parsed.data.banks, updated_at: new Date().toISOString() })
     .eq("user_id", await requireUserId());
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyDbError(error, "setEnabledBanks") };
 
   revalidatePath("/profile");
   return { ok: true };
@@ -168,7 +183,7 @@ export async function createBudget(input: unknown): Promise<ActionResult> {
       },
       { onConflict: "user_id,category_id,month" },
     );
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyDbError(error, "createBudget") };
 
   revalidatePath("/budget");
   return { ok: true };
@@ -188,7 +203,7 @@ export async function createGoal(input: unknown): Promise<ActionResult> {
       deadline: parsed.data.deadline || null,
       icon: parsed.data.icon,
     });
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyDbError(error, "createGoal") };
 
   revalidatePath("/goals");
   return { ok: true };
@@ -207,14 +222,14 @@ export async function contributeToGoal(input: unknown): Promise<ActionResult> {
     .eq("id", parsed.data.goal_id)
     .eq("user_id", userId)
     .single();
-  if (readError) return { ok: false, error: readError.message };
+  if (readError) return { ok: false, error: friendlyDbError(readError, "contributeToGoal") };
 
   const { error } = await supabase
     .from("savings_goals")
     .update({ current_amount: Number(goal.current_amount) + parsed.data.amount })
     .eq("id", parsed.data.goal_id)
     .eq("user_id", userId);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyDbError(error, "contributeToGoal") };
 
   revalidatePath("/goals");
   return { ok: true };
@@ -239,6 +254,25 @@ export async function syncNow(): Promise<{ ok: boolean; synced: number; error?: 
   }
 }
 
+/**
+ * Desactiva el bloqueo con Face ID: borra los passkeys del usuario. Antes
+ * no había forma de deshacer la activación — un callejón sin salida de UX.
+ * El passkey es solo el bloqueo local opcional (el login es Google), así
+ * que borrarlo no afecta el acceso a la cuenta.
+ */
+export async function disableFaceId(): Promise<ActionResult> {
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+  const { deleteCredentialsForUser } = await import("./webauthn");
+  try {
+    await deleteCredentialsForUser(await requireUserId());
+  } catch (err) {
+    console.error("[disableFaceId]", err);
+    return { ok: false, error: "No se pudo desactivar. Intenta de nuevo." };
+  }
+  revalidatePath("/profile");
+  return { ok: true };
+}
+
 /** Guarda feedback del usuario (botón en el perfil). */
 export async function sendFeedback(message: string): Promise<ActionResult> {
   const trimmed = message.trim();
@@ -249,7 +283,7 @@ export async function sendFeedback(message: string): Promise<ActionResult> {
   const { error } = await getSupabaseAdmin()
     .from("feedback")
     .insert({ user_id: await requireUserId(), message: trimmed });
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyDbError(error, "sendFeedback") };
   return { ok: true };
 }
 

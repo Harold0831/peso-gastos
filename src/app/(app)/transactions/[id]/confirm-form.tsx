@@ -6,9 +6,11 @@ import type { Transaction } from "@/lib/types";
 import { currencySymbol, formatFullDate, formatMoney, formatTime } from "@/lib/format";
 import { confirmTransaction, deleteTransaction } from "@/lib/actions";
 import { BackIcon } from "@/components/icons";
+import { useToast } from "@/components/toast";
 
 export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: string[] }) {
   const router = useRouter();
+  const toast = useToast();
   const suggested = tx.category ?? tx.ai_suggested_category;
   const [category, setCategory] = useState<string | null>(suggested);
   const [notes, setNotes] = useState(tx.notes ?? "");
@@ -47,6 +49,7 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
         setError(result.error ?? "No se pudo guardar");
         return;
       }
+      toast(tx.confirmed ? "✓ Cambios guardados" : "✓ Transacción confirmada");
       router.push("/transactions");
       router.refresh();
     });
@@ -61,6 +64,7 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
         setConfirmingDelete(false);
         return;
       }
+      toast("Transacción eliminada");
       router.push("/transactions");
       router.refresh();
     });
@@ -128,6 +132,16 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
             ["Fecha", formatFullDate(date)],
             ["Hora", formatTime(date)],
             ["Tarjeta", tx.card_last4 ? `•••• ${tx.card_last4}` : "—"],
+            [
+              "Origen",
+              tx.source === "email"
+                ? "✉️ Correo del banco"
+                : tx.source === "voice"
+                  ? "🎤 Atajo de voz"
+                  : tx.source === "manual"
+                    ? "✋ Manual"
+                    : "—",
+            ],
           ] as const
         ).map(([label, value], i, all) => (
           <div
@@ -151,7 +165,7 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
           </span>
         )}
       </div>
-      <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-1">
+      <div className="flex flex-wrap gap-2 px-5 pb-1">
         {orderedCategories.map((name) => {
           const active = category === name;
           const isAiSuggestion = name === tx.ai_suggested_category;
