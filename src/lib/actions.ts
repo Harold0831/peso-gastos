@@ -9,6 +9,7 @@ import {
   bulkConfirmSchema,
   confirmSchema,
   contributionSchema,
+  dismissNotificationsSchema,
   enabledBanksSchema,
   goalSchema,
   pushSubscriptionSchema,
@@ -388,6 +389,35 @@ export async function disableFaceId(): Promise<ActionResult> {
     return { ok: false, error: "No se pudo desactivar. Intenta de nuevo." };
   }
   revalidatePath("/profile");
+  return { ok: true };
+}
+
+/**
+ * Descarta avisos de la bandeja (uno con su ✕, o todos con "Limpiar").
+ * Upsert: re-descartar actualiza el context — así el resumen de pendientes
+ * queda anclado a la transacción más reciente vista al descartar.
+ */
+export async function dismissNotifications(input: unknown): Promise<ActionResult> {
+  const parsed = dismissNotificationsSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const userId = await requireUserId();
+  const { error } = await getSupabaseAdmin()
+    .from("notification_dismissals")
+    .upsert(
+      parsed.data.entries.map((e) => ({
+        user_id: userId,
+        item_id: e.id,
+        context: e.context ?? null,
+        dismissed_at: new Date().toISOString(),
+      })),
+      { onConflict: "user_id,item_id" },
+    );
+  if (error) return { ok: false, error: friendlyDbError(error, "dismissNotifications") };
+
+  revalidatePath("/");
+  revalidatePath("/notifications");
   return { ok: true };
 }
 

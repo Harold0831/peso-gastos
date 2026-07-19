@@ -240,25 +240,43 @@ export interface AttentionItem {
   detail: string;
   href: string;
   kind: "gmail" | "budget" | "pending";
+  /** Los avisos descartables llevan ✕; los críticos (Gmail roto) no. */
+  dismissible: boolean;
+  /** Estado guardado al descartar — permite reaparecer con info nueva. */
+  context?: string;
 }
 
 /**
  * Bandeja de notificaciones in-app (la campanita del dashboard). Se DERIVA
  * del estado actual en vez de persistirse: nunca muestra avisos viejos ya
- * resueltos ni necesita marcar-como-leído — si algo aparece aquí, sigue
- * requiriendo atención; cuando se resuelve, desaparece solo.
- * Orden: roturas (Gmail) → presupuestos excedidos/en riesgo → pendientes.
+ * resueltos. "Descartar" (notification_dismissals, migración 0007) esconde
+ * un aviso, pero reaparece si hay información NUEVA: el resumen de
+ * pendientes guarda el created_at de la más reciente al descartar y
+ * vuelve cuando llega una posterior; los avisos de presupuesto llevan el
+ * mes y el nivel (80%/excedido) en su id — al escalar o cambiar de mes,
+ * son un aviso nuevo. Orden: Gmail roto → pendientes → presupuestos.
  */
 export async function getAttentionItems(): Promise<AttentionItem[]> {
   const items: AttentionItem[] = [];
   const now = new Date();
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   // Import diferido: users.ts es server-only y depende de la sesión
   const { formatMoney } = await import("./format");
 
+  const dismissals = new Map<string, string | null>();
   if (isSupabaseConfigured()) {
-    const { getGmailStatus } = await import("./users");
-    const gmail = await getGmailStatus(await requireUserId());
+    const userId = await requireUserId();
+    const [{ getGmailStatus }, { data: rows }] = await Promise.all([
+      import("./users"),
+      getSupabaseAdmin()
+        .from("notification_dismissals")
+        .select("item_id, context")
+        .eq("user_id", userId),
+    ]);
+    for (const r of rows ?? []) dismissals.set(r.item_id, r.context);
+
+    const gmail = await getGmailStatus(userId);
     if (gmail.linked && !gmail.syncEnabled) {
       items.push({
         id: "gmail-expired",
@@ -267,6 +285,7 @@ export async function getAttentionItems(): Promise<AttentionItem[]> {
         detail: "Reconéctalo para que tus transacciones sigan llegando",
         href: "/profile",
         kind: "gmail",
+        dismissible: false, // rotura real: no se puede ignorar
       });
     }
   }
@@ -277,37 +296,46 @@ export async function getAttentionItems(): Promise<AttentionItem[]> {
     getHomeCurrency(),
   ]);
 
-  for (const { budget, category, spent } of budgets) {
-    const pct = budget.limit_amount > 0 ? spent / budget.limit_amount : 0;
-    if (pct >= 1) {
+  // Pendientes agrupadas en UN aviso — revisar la lista es una sola acción.
+  const pending = transactions.filter((t) => !t.confirmed);
+  if (pending.length > 0) {
+    const newest = pending.reduce((a, b) => (a.created_at > b.created_at ? a : b)).created_at;
+    const dismissedAt = dismissals.get("pending");
+    // Reaparece solo si hay una pendiente MÁS NUEVA que la del descarte
+    if (dismissedAt === undefined || (dismissedAt !== null && newest > dismissedAt)) {
       items.push({
-        id: `budget-over-${category.id}`,
-        icon: "🚨",
-        title: `Presupuesto de ${category.name} excedido`,
-        detail: `${formatMoney(spent, home)} de ${formatMoney(budget.limit_amount, home)}`,
-        href: "/budget",
-        kind: "budget",
-      });
-    } else if (pct >= 0.8) {
-      items.push({
-        id: `budget-warn-${category.id}`,
-        icon: "⚠️",
-        title: `Presupuesto de ${category.name} al ${Math.round(pct * 100)}%`,
-        detail: `${formatMoney(spent, home)} de ${formatMoney(budget.limit_amount, home)}`,
-        href: "/budget",
-        kind: "budget",
+        id: "pending",
+        icon: "⏳",
+        title:
+          pending.length === 1
+            ? "Tienes 1 transacción sin confirmar"
+            : `Tienes ${pending.length} transacciones sin confirmar`,
+        detail: "Toca para revisarlas y categorizarlas",
+        href: "/transactions?filter=pendientes",
+        kind: "pending",
+        dismissible: true,
+        context: newest,
       });
     }
   }
 
-  for (const t of transactions.filter((t) => !t.confirmed)) {
+  for (const { budget, category, spent } of budgets) {
+    const pct = budget.limit_amount > 0 ? spent / budget.limit_amount : 0;
+    const level = pct >= 1 ? "over" : pct >= 0.8 ? "warn" : null;
+    if (!level) continue;
+    const id = `budget-${level}-${category.id}-${monthKey}`;
+    if (dismissals.has(id)) continue;
     items.push({
-      id: `pending-${t.id}`,
-      icon: "⏳",
-      title: t.merchant,
-      detail: `${formatMoney(t.amount, t.currency)} · por confirmar`,
-      href: `/transactions/${t.id}`,
-      kind: "pending",
+      id,
+      icon: level === "over" ? "🚨" : "⚠️",
+      title:
+        level === "over"
+          ? `Presupuesto de ${category.name} excedido`
+          : `Presupuesto de ${category.name} al ${Math.round(pct * 100)}%`,
+      detail: `${formatMoney(spent, home)} de ${formatMoney(budget.limit_amount, home)}`,
+      href: "/budget",
+      kind: "budget",
+      dismissible: true,
     });
   }
 

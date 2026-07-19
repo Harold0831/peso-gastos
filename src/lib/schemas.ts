@@ -92,6 +92,18 @@ export const voiceEntrySchema = z.discriminatedUnion("mode", [
   }),
 ]);
 
+/** Descartes de la bandeja de notificaciones (uno o varios de un tap). */
+export const dismissNotificationsSchema = z.object({
+  entries: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(120),
+        context: z.string().max(200).optional(),
+      }),
+    )
+    .min(1),
+});
+
 /** Suscripción Web Push tal como la entrega pushManager.subscribe().toJSON(). */
 export const pushSubscriptionSchema = z.object({
   endpoint: z.string().url("Suscripción inválida"),
