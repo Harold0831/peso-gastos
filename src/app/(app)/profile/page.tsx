@@ -1,3 +1,4 @@
+import { getCustomCategories } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { getGmailStatus, getUserById, requireUserId } from "@/lib/users";
 import { getCredentialsForUser } from "@/lib/webauthn";
@@ -21,16 +22,18 @@ export default async function ProfilePage() {
         gmail={{ linked: false, email: null, syncEnabled: false, enabledBanks: null }}
         hasPasskey={false}
         pushConfigured={false}
+        customCategories={[]}
         demoMode
       />
     );
   }
 
   const userId = await requireUserId();
-  const [user, gmail, credentials] = await Promise.all([
+  const [user, gmail, credentials, customCategories] = await Promise.all([
     getUserById(userId),
     getGmailStatus(userId),
     getCredentialsForUser(userId),
+    getCustomCategories(),
   ]);
 
   return (
@@ -46,6 +49,7 @@ export default async function ProfilePage() {
       }}
       hasPasskey={credentials.length > 0}
       pushConfigured={pushConfigured}
+      customCategories={customCategories}
     />
   );
 }

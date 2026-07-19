@@ -94,7 +94,8 @@ supabase/
 ├── migrations/0005_...sql   # api_tokens, transactions.source, users.home_currency
 ├── migrations/0006_...sql   # push_subscriptions (Web Push por dispositivo)
 ├── migrations/0007_...sql   # notification_dismissals (descartes de la bandeja)
-└── seed.sql                 # Categorías por defecto (compartidas entre usuarios)
+├── migrations/0008_...sql   # categories.user_id (personalizadas por usuario)
+└── seed.sql                 # Categorías por defecto (globales, user_id null)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
 ```
@@ -107,7 +108,8 @@ design/                      # Referencias visuales (no es código de la app)
   de sesión) — no hay RLS policies porque el único cliente es el servidor
   con service role; el aislamiento entre usuarios vive en el código, así
   que cualquier query nueva DEBE incluir el filtro de user_id. Las
-  categorías son compartidas (seed global, solo lectura).
+  categorías globales (seed, `user_id` null) son compartidas y de solo
+  lectura; cada usuario puede además crear las suyas (ver Categorías).
 - **Lecturas**: server components → `lib/data.ts` → Supabase con service
   role key. Todas las páginas son `force-dynamic` (datos cambian a cada sync).
   Cada ruta tiene su `loading.tsx` (skeleton) — Next.js lo muestra
@@ -179,6 +181,22 @@ design/                      # Referencias visuales (no es código de la app)
   `fetchBankEmails` para acotar la búsqueda en Gmail. `banks.ts` existe
   separado de `bank-parser.ts` a propósito: la UI y los schemas Zod lo
   importan desde el cliente sin arrastrar los 5 parsers al bundle.
+- **Categorías personalizadas por usuario** (`categories.user_id`,
+  migración `0008`): `user_id` null = categoría global (las 9 del seed,
+  compartidas y de solo lectura); con `user_id` = privada de ese usuario.
+  `getCategories()` en `data.ts` devuelve globales + propias del usuario en
+  sesión (`.or(user_id.is.null,user_id.eq.<uid>)`), así que TODO lo que ya
+  consumía esa lista —alta manual, detalle, presupuestos, gráficas y la
+  sugerencia de Gemini en `sync.ts`— muestra las personalizadas sin más
+  cambios. El unique global sobre `name` se cambió por uno acotado al
+  ámbito (`coalesce(user_id, centinela), name`) para que dos usuarios
+  puedan tener "Mascota". CRUD en el perfil ("Mis categorías",
+  `CategoryManager`) vía `createCategory`/`deleteCategory`: crear rechaza
+  nombres que choquen con una categoría visible (case-insensitive);
+  **borrar se bloquea si está en uso** — transacciones (guardan el nombre)
+  o un presupuesto (FK con cascade que se perdería) — el usuario reasigna
+  primero. Las globales nunca se editan ni se borran (el filtro por
+  `user_id` lo impide).
 - **Confirmación en lote** (`confirmTransactionsBulk`): en /transactions,
   filtro "Por confirmar" → "Seleccionar varias" activa checkboxes en
   `TxRow` (prop `selectable`). Si 2+ pendientes comparten la misma

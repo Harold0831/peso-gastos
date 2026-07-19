@@ -138,9 +138,34 @@ export async function getMonthSummary(month: Date): Promise<MonthSummary> {
   return { income, expenses, net: income - expenses };
 }
 
+/**
+ * Categorías visibles para el usuario en sesión: las globales (seed,
+ * user_id null) más las que él mismo creó. Es la lista que alimenta el
+ * alta manual, el detalle, los presupuestos, las gráficas y la sugerencia
+ * de Gemini — todo ya consume esta función, así que las personalizadas
+ * aparecen en todos lados sin más cambios.
+ */
 export async function getCategories(): Promise<Category[]> {
   if (!isSupabaseConfigured()) return MOCK_CATEGORIES;
-  const { data, error } = await getSupabaseAdmin().from("categories").select("*").order("name");
+  const userId = await requireUserId();
+  const { data, error } = await getSupabaseAdmin()
+    .from("categories")
+    .select("*")
+    .or(`user_id.is.null,user_id.eq.${userId}`)
+    .order("name");
+  if (error) throw new Error(`Error cargando categorías: ${error.message}`);
+  return data ?? [];
+}
+
+/** Solo las categorías propias del usuario (las que puede editar/borrar). */
+export async function getCustomCategories(): Promise<Category[]> {
+  if (!isSupabaseConfigured()) return [];
+  const userId = await requireUserId();
+  const { data, error } = await getSupabaseAdmin()
+    .from("categories")
+    .select("*")
+    .eq("user_id", userId)
+    .order("name");
   if (error) throw new Error(`Error cargando categorías: ${error.message}`);
   return data ?? [];
 }
@@ -214,6 +239,7 @@ export async function getCategorySpend(month: Date): Promise<CategorySpend[]> {
     icon: "📌",
     color: "#9CA3AF",
     is_default: false,
+    user_id: null,
   });
   return [...totals.entries()]
     .map(([name, amount]) => ({ category: byName.get(name) ?? fallback(name), amount }))

@@ -42,6 +42,10 @@ export interface Category {
   icon: string;
   color: string;
   is_default: boolean;
+  /** Dueño de la categoría. NULL = categoría global (seed), visible para
+   *  todos; con user_id = personalizada, solo la ve y la puede borrar ese
+   *  usuario. Ver migración 0008. */
+  user_id: string | null;
 }
 
 export interface Budget {

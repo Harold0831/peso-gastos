@@ -10,4 +10,7 @@ values
   ('Transferencias', '🔁', '#64748B', true),
   ('Educación', '📚', '#7C6FBF', true),
   ('Otros', '📌', '#9CA3AF', true)
-on conflict (name) do nothing;
+-- Sin target de conflicto: tras la migración 0008 el unique sobre `name` se
+-- reemplaza por uno acotado al ámbito (user_id, name); `do nothing` a secas
+-- salta cualquier duplicado sin depender del nombre exacto del índice.
+on conflict do nothing;

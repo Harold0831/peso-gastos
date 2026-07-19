@@ -7,6 +7,7 @@ import { requireUserId } from "./users";
 import {
   budgetSchema,
   bulkConfirmSchema,
+  categorySchema,
   confirmSchema,
   contributionSchema,
   dismissNotificationsSchema,
@@ -241,6 +242,93 @@ export async function setEnabledBanks(input: unknown): Promise<ActionResult> {
     .eq("user_id", await requireUserId());
   if (error) return { ok: false, error: friendlyDbError(error, "setEnabledBanks") };
 
+  revalidatePath("/profile");
+  return { ok: true };
+}
+
+/**
+ * Crea una categoría personalizada del usuario (perfil → "Mis categorías").
+ * Rechaza nombres que choquen con una categoría ya visible (global o propia,
+ * sin distinguir mayúsculas) para no tener dos chips "Comida" confusos.
+ */
+export async function createCategory(input: unknown): Promise<ActionResult> {
+  const parsed = categorySchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const userId = await requireUserId();
+  const supabase = getSupabaseAdmin();
+
+  const { data: visible, error: readError } = await supabase
+    .from("categories")
+    .select("name")
+    .or(`user_id.is.null,user_id.eq.${userId}`);
+  if (readError) return { ok: false, error: friendlyDbError(readError, "createCategory") };
+
+  const clash = (visible ?? []).some(
+    (c) => c.name.toLowerCase() === parsed.data.name.toLowerCase(),
+  );
+  if (clash) return { ok: false, error: "Ya existe una categoría con ese nombre." };
+
+  const { error } = await supabase.from("categories").insert({
+    user_id: userId,
+    name: parsed.data.name,
+    icon: parsed.data.icon,
+    color: parsed.data.color,
+    is_default: false,
+  });
+  if (error) return { ok: false, error: friendlyDbError(error, "createCategory") };
+
+  revalidateAll();
+  revalidatePath("/profile");
+  return { ok: true };
+}
+
+/**
+ * Borra una categoría propia. Nunca toca las globales (el filtro por
+ * user_id lo impide). Se bloquea si la categoría está en uso —
+ * transacciones (guardan el nombre) o un presupuesto (FK que se borraría en
+ * cascada) — para no dejar movimientos huérfanos ni perder un presupuesto
+ * sin avisar; el usuario debe reasignar primero.
+ */
+export async function deleteCategory(id: string): Promise<ActionResult> {
+  if (!id) return { ok: false, error: "Falta el id de la categoría" };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const userId = await requireUserId();
+  const supabase = getSupabaseAdmin();
+
+  const { data: category } = await supabase
+    .from("categories")
+    .select("id, name")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!category) return { ok: false, error: "No puedes eliminar esta categoría." };
+
+  const [{ count: txCount }, { data: budgetRows }] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("category", category.name)
+      .is("deleted_at", null),
+    supabase.from("budgets").select("id").eq("user_id", userId).eq("category_id", id).limit(1),
+  ]);
+  if ((txCount ?? 0) > 0) {
+    return {
+      ok: false,
+      error: "Tiene transacciones asociadas. Cámbialas de categoría antes de borrarla.",
+    };
+  }
+  if (budgetRows && budgetRows.length > 0) {
+    return { ok: false, error: "Tiene un presupuesto asignado. Elimínalo primero." };
+  }
+
+  const { error } = await supabase.from("categories").delete().eq("id", id).eq("user_id", userId);
+  if (error) return { ok: false, error: friendlyDbError(error, "deleteCategory") };
+
+  revalidateAll();
   revalidatePath("/profile");
   return { ok: true };
 }
