@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { subMonths } from "date-fns";
 import {
+  getAttentionItems,
   getGoals,
   getHomeCurrency,
   getMonthSummary,
-  getPendingCount,
   getTransactions,
 } from "@/lib/data";
 import { currencySymbol, formatMoney, formatMonthLabel, merchantInitials } from "@/lib/format";
@@ -50,14 +50,15 @@ export default async function DashboardPage() {
     hasPasskey = credentials.length > 0;
   }
 
-  const [summary, prevSummary, pendingCount, recent, goals, homeCurrency] = await Promise.all([
+  const [summary, prevSummary, attention, recent, goals, homeCurrency] = await Promise.all([
     getMonthSummary(now),
     getMonthSummary(subMonths(now, 1)),
-    getPendingCount(),
+    getAttentionItems(),
     getTransactions({ limit: 5 }),
     getGoals(),
     getHomeCurrency(),
   ]);
+  const pendingCount = attention.filter((i) => i.kind === "pending").length;
 
   // Comparación de gastos vs el mes anterior — el "ajá" de una app de
   // finanzas está en el delta, no en el número absoluto.
@@ -90,13 +91,17 @@ export default async function DashboardPage() {
           </span>
         </Link>
         <Link
-          href="/transactions?filter=pendientes"
-          aria-label="Transacciones por confirmar"
+          href="/notifications"
+          aria-label={
+            attention.length > 0 ? `Notificaciones: ${attention.length}` : "Notificaciones"
+          }
           className="relative flex h-[38px] w-[38px] items-center justify-center rounded-pill border border-line bg-surface text-ink"
         >
           <BellIcon />
-          {pendingCount > 0 && (
-            <span className="absolute right-2.5 top-2 h-[7px] w-[7px] rounded-pill border-[1.5px] border-surface bg-expense" />
+          {attention.length > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-[17px] min-w-[17px] items-center justify-center rounded-pill border-[1.5px] border-surface bg-expense px-1 text-[9px] font-bold text-white">
+              {attention.length > 9 ? "9+" : attention.length}
+            </span>
           )}
         </Link>
       </div>

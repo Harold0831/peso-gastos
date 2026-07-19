@@ -44,8 +44,10 @@ src/
 │   │   │   └── loading.tsx
 │   │   ├── goals/            # 6. Metas de ahorro con abonos
 │   │   │   └── loading.tsx
-│   │   └── profile/          # 7. Perfil: Gmail, Face ID, feedback, logout
-│   │       └── loading.tsx
+│   │   ├── profile/          # 7. Perfil: Gmail, Face ID, feedback, logout
+│   │   │   └── loading.tsx
+│   │   └── notifications/    # 8. Bandeja (campanita): derivada del estado,
+│   │       └── loading.tsx   #    ver getAttentionItems() — sin tabla propia
 │   └── api/
 │       ├── auth/google/        # GET inicia OAuth; callback crea usuario+sesión
 │       ├── auth/…              # register/login options+verify (passkey del
