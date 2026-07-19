@@ -91,7 +91,12 @@ export async function runSyncForUser(
   const newEmails = emails.filter((e) => !known.has(e.id));
   if (newEmails.length === 0) return { synced: 0, errors };
 
-  const { data: categories, error: catError } = await supabase.from("categories").select("name");
+  // Globales (seed) + las propias del usuario, para que Gemini pueda sugerir
+  // también las categorías personalizadas al clasificar sus correos.
+  const { data: categories, error: catError } = await supabase
+    .from("categories")
+    .select("name")
+    .or(`user_id.is.null,user_id.eq.${userId}`);
   if (catError) throw new Error(`Error cargando categorías: ${catError.message}`);
   const categoryNames = (categories ?? []).map((c) => c.name);
 

@@ -92,6 +92,15 @@ export const voiceEntrySchema = z.discriminatedUnion("mode", [
   }),
 ]);
 
+/** Categoría personalizada del usuario (perfil → "Mis categorías"). El
+ *  emoji y el color se eligen de paletas fijas en la UI, pero se validan
+ *  igual aquí por si la request no viene del formulario. */
+export const categorySchema = z.object({
+  name: z.string().trim().min(1, "Escribe un nombre").max(24, "Máximo 24 caracteres"),
+  icon: z.string().trim().min(1, "Elige un emoji").max(4),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Color inválido"),
+});
+
 /** Descartes de la bandeja de notificaciones (uno o varios de un tap). */
 export const dismissNotificationsSchema = z.object({
   entries: z
