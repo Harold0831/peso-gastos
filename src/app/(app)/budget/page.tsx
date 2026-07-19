@@ -1,6 +1,8 @@
+import { subMonths } from "date-fns";
 import { getBudgetsForMonth, getCategories, getHomeCurrency } from "@/lib/data";
 import { formatMoney, formatMonthLabel } from "@/lib/format";
 import { AddBudgetForm } from "./add-budget-form";
+import { CopyBudgetsButton } from "./copy-budgets-button";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,10 @@ export default async function BudgetPage() {
     getCategories(),
     getHomeCurrency(),
   ]);
+
+  // Mes vacío + mes anterior con presupuestos → ofrecer copiarlos de un tap
+  const prevMonth = subMonths(now, 1);
+  const canCopyPrevious = budgets.length === 0 && (await getBudgetsForMonth(prevMonth)).length > 0;
 
   const totalUsed = budgets.reduce((s, b) => s + b.spent, 0);
   const totalBudget = budgets.reduce((s, b) => s + b.budget.limit_amount, 0);
@@ -75,8 +81,13 @@ export default async function BudgetPage() {
       <div className="flex flex-col gap-2.5 px-5">
         {budgets.length === 0 && (
           <p className="py-8 text-center text-sm text-ink-muted">
-            Sin presupuestos este mes. Crea el primero abajo.
+            {canCopyPrevious
+              ? "Sin presupuestos este mes. Copia los del mes pasado o crea uno nuevo abajo."
+              : "Sin presupuestos este mes. Crea el primero abajo."}
           </p>
+        )}
+        {canCopyPrevious && (
+          <CopyBudgetsButton month={monthKey} prevLabel={formatMonthLabel(prevMonth)} />
         )}
         {budgets.map(({ budget, category, spent }) => {
           const pct = spent / budget.limit_amount;

@@ -90,6 +90,7 @@ supabase/
 ├── migrations/0003_...sql   # Multi-usuario: users, gmail_accounts, user_id, feedback
 ├── migrations/0004_...sql   # Multi-moneda (exchange_rates, exchange_rate) + enabled_banks
 ├── migrations/0005_...sql   # api_tokens, transactions.source, users.home_currency
+├── migrations/0006_...sql   # push_subscriptions (Web Push por dispositivo)
 └── seed.sql                 # Categorías por defecto (compartidas entre usuarios)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
@@ -343,6 +344,7 @@ Project Settings → Environment Variables.
 | `ADMIN_SECRET`                            | Protege /api/admin/mint-token (genera el token de API de un usuario para el Shortcut de iOS)           | `openssl rand -hex 32`              |
 | `CRON_SECRET`                             | Protege /api/gmail-watch/renew — **debe llamarse así**, Vercel lo inyecta automáticamente en sus crons | `openssl rand -hex 32`              |
 | `SESSION_SECRET`                          | Firma la cookie JWT de sesión                                                                          | `openssl rand -base64 32`           |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push (opcional): sin ellas la sección "Notificaciones" del perfil no aparece y nada más cambia | `npx web-push generate-vapid-keys`  |
 
 ## Configurar Google (login + Gmail multi-usuario)
 
@@ -513,6 +515,17 @@ activa el bloqueo por el `useState(false)` inicial del gate.
   (topic + IAM + subscription) — ver § Gmail Push. El sync manual (botón,
   pull-to-refresh, `GET /api/sync`) queda como respaldo si el webhook
   falla o mientras configuras todo por primera vez.
+- **Notificaciones push (Web Push + VAPID, migración `0006`)**: opcional —
+  sin claves VAPID todo se apaga en silencio. `lib/push.ts` →
+  `sendPushToUser()` (poda suscripciones muertas 404/410); handlers `push`
+  y `notificationclick` en `public/sw.js`. Dos disparadores: (a) sync
+  automático (webhook/cron, NO el manual — el usuario ya está mirando) →
+  "N transacciones por confirmar"; (b) al CONFIRMAR un gasto (no al
+  sincronizar: las pendientes no cuentan al presupuesto) si el gasto de la
+  categoría cruzó el 80% o 100% del presupuesto — solo al cruzar el
+  umbral, nunca repetido. Suscripción por dispositivo desde el perfil
+  ("Notificaciones"); en iPhone requiere la PWA instalada (iOS 16.4+).
+  Fallo suave en todo: una push jamás tumba un sync o una confirmación.
 - **Convenciones de UX** (2026-07-18): toda mutación confirma con un toast
   (`useToast()`, provider en el layout de `(app)`) — nunca terminar una
   acción en silencio. Los banners promocionales/opcionales del dashboard

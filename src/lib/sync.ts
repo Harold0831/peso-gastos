@@ -5,6 +5,7 @@ import { suggestCategory } from "./gemini";
 import { getSupabaseAdmin } from "./supabase";
 import { decryptToken } from "./crypto";
 import { getUsdToDopRate } from "./exchange-rate";
+import { sendPushToUser } from "./push";
 
 export interface SyncResult {
   synced: number;
@@ -34,7 +35,15 @@ interface GmailAccountRow {
  * sync_enabled=false — el perfil muestra "reconectar Gmail" y los crons
  * dejan de intentar con esa cuenta hasta que se reconecte.
  */
-export async function runSyncForUser(userId: string, newerThanDays?: number): Promise<SyncResult> {
+export async function runSyncForUser(
+  userId: string,
+  newerThanDays?: number,
+  options?: {
+    /** Push "N por confirmar" al terminar. true en los syncs automáticos
+     *  (webhook/cron); false en el manual — el usuario ya está mirando. */
+    notify?: boolean;
+  },
+): Promise<SyncResult> {
   const supabase = getSupabaseAdmin();
   const errors: string[] = [];
 
@@ -158,6 +167,18 @@ export async function runSyncForUser(userId: string, newerThanDays?: number): Pr
     synced++;
   }
 
+  if (options?.notify && synced > 0) {
+    // Fallo suave: la notificación es un extra, nunca tumba el sync.
+    await sendPushToUser(userId, {
+      title: "Peso",
+      body:
+        synced === 1
+          ? "1 transacción nueva por confirmar"
+          : `${synced} transacciones nuevas por confirmar`,
+      url: "/transactions?filter=pendientes",
+    }).catch((err) => console.error("[sync] push falló:", err));
+  }
+
   return { synced, errors };
 }
 
@@ -172,7 +193,7 @@ export async function runSyncForGmailAddress(email: string): Promise<SyncResult>
   if (!account || !account.sync_enabled) {
     return { synced: 0, errors: [] }; // dirección desconocida o sync apagado: ignora
   }
-  return runSyncForUser(account.user_id);
+  return runSyncForUser(account.user_id, undefined, { notify: true });
 }
 
 /** Sincroniza todos los usuarios con Gmail vinculado (GET /api/sync). */
@@ -187,7 +208,7 @@ export async function runSyncAll(newerThanDays?: number): Promise<SyncResult> {
   const errors: string[] = [];
   for (const account of (accounts ?? []) as GmailAccountRow[]) {
     try {
-      const result = await runSyncForUser(account.user_id, newerThanDays);
+      const result = await runSyncForUser(account.user_id, newerThanDays, { notify: true });
       synced += result.synced;
       errors.push(...result.errors.map((e) => `[${account.email}] ${e}`));
     } catch (err) {

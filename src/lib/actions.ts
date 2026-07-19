@@ -11,6 +11,7 @@ import {
   contributionSchema,
   enabledBanksSchema,
   goalSchema,
+  pushSubscriptionSchema,
   transactionSchema,
 } from "./schemas";
 
@@ -42,12 +43,58 @@ function revalidateAll() {
   }
 }
 
-export async function confirmTransaction(input: {
-  id: string;
-  category: string;
-  notes?: string;
-  amount?: number;
-}): Promise<ActionResult> {
+/**
+ * Push si al confirmar gasto(s) el presupuesto de la categoría cruzó el
+ * 80% o el 100%. Vive en la confirmación (no en el sync) a propósito: las
+ * pendientes no cuentan al presupuesto hasta que se confirman. Solo avisa
+ * al CRUZAR el umbral (antes < umbral ≤ después) — nunca repite el aviso
+ * en cada gasto siguiente. Fallo suave: jamás rompe la confirmación.
+ */
+async function maybeNotifyBudgetThreshold(categoryName: string, txIds: string[]): Promise<void> {
+  try {
+    const { getBudgetsForMonth, getHomeCurrency } = await import("./data");
+    const { sendPushToUser } = await import("./push");
+    const { formatMoney } = await import("./format");
+
+    const userId = await requireUserId();
+    const [budgets, home] = await Promise.all([getBudgetsForMonth(new Date()), getHomeCurrency()]);
+    const entry = budgets.find((b) => b.category.name === categoryName);
+    if (!entry || entry.budget.limit_amount <= 0) return;
+
+    // Monto recién confirmado (en moneda de casa) para reconstruir el "antes"
+    const { data: rows } = await getSupabaseAdmin()
+      .from("transactions")
+      .select("amount, currency, exchange_rate, type")
+      .in("id", txIds)
+      .eq("user_id", userId);
+    const added = (rows ?? [])
+      .filter((r) => r.type === "expense")
+      .reduce(
+        (s, r) =>
+          s + (r.currency === home ? Number(r.amount) : Number(r.amount) * (r.exchange_rate ?? 1)),
+        0,
+      );
+    if (added <= 0) return;
+
+    const limit = entry.budget.limit_amount;
+    const after = entry.spent / limit;
+    const before = (entry.spent - added) / limit;
+
+    let body: string | null = null;
+    if (before < 1 && after >= 1) {
+      body = `Superaste el presupuesto de ${categoryName}: ${formatMoney(entry.spent, home)} de ${formatMoney(limit, home)}`;
+    } else if (before < 0.8 && after >= 0.8) {
+      body = `Vas por el ${Math.round(after * 100)}% del presupuesto de ${categoryName}`;
+    }
+    if (!body) return;
+
+    await sendPushToUser(userId, { title: "⚠️ Presupuesto", body, url: "/budget" });
+  } catch (err) {
+    console.error("[maybeNotifyBudgetThreshold]", err);
+  }
+}
+
+export async function confirmTransaction(input: unknown): Promise<ActionResult> {
   const parsed = confirmSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
@@ -59,11 +106,15 @@ export async function confirmTransaction(input: {
       notes: parsed.data.notes || null,
       confirmed: true,
       ...(parsed.data.amount !== undefined && { amount: parsed.data.amount }),
+      ...(parsed.data.merchant !== undefined && { merchant: parsed.data.merchant }),
+      ...(parsed.data.date !== undefined && { date: parsed.data.date }),
+      ...(parsed.data.type !== undefined && { type: parsed.data.type }),
     })
     .eq("id", parsed.data.id)
     .eq("user_id", await requireUserId());
   if (error) return { ok: false, error: friendlyDbError(error, "confirmTransaction") };
 
+  await maybeNotifyBudgetThreshold(parsed.data.category, [parsed.data.id]);
   revalidateAll();
   return { ok: true };
 }
@@ -89,6 +140,7 @@ export async function confirmTransactionsBulk(input: {
     .eq("user_id", await requireUserId());
   if (error) return { ok: false, error: friendlyDbError(error, "confirmTransactionsBulk") };
 
+  await maybeNotifyBudgetThreshold(parsed.data.category, parsed.data.ids);
   revalidateAll();
   return { ok: true };
 }
@@ -115,6 +167,26 @@ export async function deleteTransaction(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
+/**
+ * Deshace un soft delete (el "Deshacer" del toast al eliminar). Como
+ * eliminar solo estampa deleted_at, restaurar es limpiarlo — la fila y su
+ * gmail_message_id nunca se fueron.
+ */
+export async function restoreTransaction(id: string): Promise<ActionResult> {
+  if (!id) return { ok: false, error: "Falta el id de la transacción" };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("transactions")
+    .update({ deleted_at: null })
+    .eq("id", id)
+    .eq("user_id", await requireUserId());
+  if (error) return { ok: false, error: friendlyDbError(error, "restoreTransaction") };
+
+  revalidateAll();
+  return { ok: true };
+}
+
 export async function createTransaction(input: unknown): Promise<ActionResult> {
   const parsed = transactionSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
@@ -130,7 +202,7 @@ export async function createTransaction(input: unknown): Promise<ActionResult> {
     exchangeRate = await getUsdToDopRate();
   }
 
-  const { error } = await getSupabaseAdmin()
+  const { data: created, error } = await getSupabaseAdmin()
     .from("transactions")
     .insert({
       user_id: await requireUserId(),
@@ -144,9 +216,14 @@ export async function createTransaction(input: unknown): Promise<ActionResult> {
       notes: parsed.data.notes || null,
       confirmed: true,
       source: "manual",
-    });
+    })
+    .select("id")
+    .single();
   if (error) return { ok: false, error: friendlyDbError(error, "createTransaction") };
 
+  if (parsed.data.type === "expense" && created) {
+    await maybeNotifyBudgetThreshold(parsed.data.category, [created.id]);
+  }
   revalidateAll();
   return { ok: true };
 }
@@ -184,6 +261,47 @@ export async function createBudget(input: unknown): Promise<ActionResult> {
       { onConflict: "user_id,category_id,month" },
     );
   if (error) return { ok: false, error: friendlyDbError(error, "createBudget") };
+
+  revalidatePath("/budget");
+  return { ok: true };
+}
+
+/**
+ * Copia los presupuestos del mes anterior al mes indicado — cada mes
+ * arranca vacío y recrearlos a mano era un ritual tedioso. Upsert: si ya
+ * existe un presupuesto para una categoría este mes, se respeta el actual.
+ */
+export async function copyBudgetsFromPreviousMonth(month: string): Promise<ActionResult> {
+  if (!/^\d{4}-\d{2}-01$/.test(month)) return { ok: false, error: "Mes inválido" };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const supabase = getSupabaseAdmin();
+  const userId = await requireUserId();
+
+  const current = new Date(`${month}T00:00:00`);
+  const prev = new Date(current.getFullYear(), current.getMonth() - 1, 1);
+  const prevKey = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}-01`;
+
+  const { data: previous, error: readError } = await supabase
+    .from("budgets")
+    .select("category_id, limit_amount")
+    .eq("user_id", userId)
+    .eq("month", prevKey);
+  if (readError) return { ok: false, error: friendlyDbError(readError, "copyBudgets") };
+  if (!previous || previous.length === 0) {
+    return { ok: false, error: "El mes pasado no tenía presupuestos que copiar" };
+  }
+
+  const { error } = await supabase.from("budgets").upsert(
+    previous.map((b) => ({
+      user_id: userId,
+      category_id: b.category_id,
+      month,
+      limit_amount: b.limit_amount,
+    })),
+    { onConflict: "user_id,category_id,month", ignoreDuplicates: true },
+  );
+  if (error) return { ok: false, error: friendlyDbError(error, "copyBudgets") };
 
   revalidatePath("/budget");
   return { ok: true };
@@ -270,6 +388,41 @@ export async function disableFaceId(): Promise<ActionResult> {
     return { ok: false, error: "No se pudo desactivar. Intenta de nuevo." };
   }
   revalidatePath("/profile");
+  return { ok: true };
+}
+
+/** Registra este dispositivo para notificaciones push (perfil). */
+export async function savePushSubscription(input: unknown): Promise<ActionResult> {
+  const parsed = pushSubscriptionSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("push_subscriptions")
+    .upsert(
+      {
+        user_id: await requireUserId(),
+        endpoint: parsed.data.endpoint,
+        p256dh: parsed.data.keys.p256dh,
+        auth: parsed.data.keys.auth,
+      },
+      { onConflict: "endpoint" },
+    );
+  if (error) return { ok: false, error: friendlyDbError(error, "savePushSubscription") };
+  return { ok: true };
+}
+
+/** Da de baja este dispositivo de las notificaciones push. */
+export async function deletePushSubscription(endpoint: string): Promise<ActionResult> {
+  if (!endpoint) return { ok: false, error: "Falta el endpoint" };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("push_subscriptions")
+    .delete()
+    .eq("endpoint", endpoint)
+    .eq("user_id", await requireUserId());
+  if (error) return { ok: false, error: friendlyDbError(error, "deletePushSubscription") };
   return { ok: true };
 }
 

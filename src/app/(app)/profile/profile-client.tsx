@@ -3,11 +3,19 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { startRegistration } from "@simplewebauthn/browser";
-import { disableFaceId, logoutAction, sendFeedback, setEnabledBanks } from "@/lib/actions";
+import {
+  deletePushSubscription,
+  disableFaceId,
+  logoutAction,
+  savePushSubscription,
+  sendFeedback,
+  setEnabledBanks,
+} from "@/lib/actions";
 import { markAuthenticated } from "@/lib/app-lock";
 import { SUPPORTED_BANKS } from "@/lib/banks";
 import { merchantInitials } from "@/lib/format";
 import { useToast } from "@/components/toast";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 interface ProfileClientProps {
   name: string;
@@ -21,7 +29,16 @@ interface ProfileClientProps {
     enabledBanks: string[] | null;
   };
   hasPasskey: boolean;
+  /** true si las claves VAPID están configuradas en el servidor. */
+  pushConfigured: boolean;
   demoMode?: boolean;
+}
+
+/** Clave pública VAPID (base64url) → Uint8Array para pushManager.subscribe. */
+function urlBase64ToUint8Array(base64: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const raw = atob((base64 + padding).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 }
 
 export function ProfileClient({
@@ -30,6 +47,7 @@ export function ProfileClient({
   avatarUrl,
   gmail,
   hasPasskey,
+  pushConfigured,
   demoMode,
 }: ProfileClientProps) {
   const router = useRouter();
@@ -46,6 +64,73 @@ export function ProfileClient({
   useEffect(() => {
     if (/android/i.test(navigator.userAgent)) setPlatform("android");
   }, []);
+
+  // --- Notificaciones push ---
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pushConfigured) return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    setPushSupported(true);
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => setPushEnabled(Boolean(sub)))
+      .catch(() => {});
+  }, [pushConfigured]);
+
+  async function enablePush() {
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setPushError("Permiso denegado — actívalo en los ajustes del navegador.");
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(
+          process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "",
+        ) as BufferSource,
+      });
+      const result = await savePushSubscription(sub.toJSON());
+      if (!result.ok) {
+        await sub.unsubscribe().catch(() => {});
+        setPushError(result.error ?? "No se pudo activar");
+        return;
+      }
+      setPushEnabled(true);
+      toast("✓ Notificaciones activadas");
+    } catch (err) {
+      console.error(err);
+      setPushError("No se pudo activar. En iPhone, instala la app en tu inicio primero.");
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  async function disablePush() {
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await deletePushSubscription(sub.endpoint);
+        await sub.unsubscribe();
+      }
+      setPushEnabled(false);
+      toast("Notificaciones desactivadas");
+    } catch {
+      setPushError("No se pudo desactivar. Intenta de nuevo.");
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   const handleDisableFaceId = () => {
     startDisabling(async () => {
@@ -236,6 +321,45 @@ export function ProfileClient({
         </section>
       )}
 
+      {/* Notificaciones push */}
+      {pushConfigured && pushSupported && (
+        <section className={sectionClass}>
+          <h2 className={labelClass}>Notificaciones</h2>
+          {pushEnabled ? (
+            <>
+              <div className="mt-3 flex items-center gap-2.5">
+                <span className="h-2 w-2 rounded-pill bg-income" />
+                <p className="text-[13px] font-medium text-ink">
+                  Activadas — te avisamos de transacciones por confirmar y presupuestos excedidos
+                </p>
+              </div>
+              <button
+                onClick={disablePush}
+                disabled={pushBusy}
+                className="mt-2 w-full py-2 text-center text-[13px] font-semibold text-ink-muted disabled:opacity-50"
+              >
+                {pushBusy ? "…" : "Desactivar en este dispositivo"}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="mt-3 text-[13px] leading-relaxed text-ink-muted">
+                Recibe un aviso cuando lleguen transacciones por confirmar o superes un presupuesto.
+                En iPhone, primero instala la app en tu pantalla de inicio.
+              </p>
+              <button
+                onClick={enablePush}
+                disabled={pushBusy || demoMode}
+                className="mt-3 w-full rounded-btn bg-accent py-3 text-[13px] font-bold text-white disabled:opacity-50"
+              >
+                {pushBusy ? "Activando…" : "Activar notificaciones"}
+              </button>
+            </>
+          )}
+          {pushError && <p className="mt-2 text-xs font-medium text-expense">{pushError}</p>}
+        </section>
+      )}
+
       {/* Face ID */}
       <section className={sectionClass}>
         <h2 className={labelClass}>Bloqueo con Face ID</h2>
@@ -247,35 +371,22 @@ export function ProfileClient({
                 Activado — la app pide Face ID al abrirla o tras 30s en segundo plano
               </p>
             </div>
-            {confirmingDisable ? (
-              <div className="mt-3 flex items-center gap-2 rounded-btn border border-expense/30 bg-expense/5 p-3">
-                <span className="flex-1 text-[13px] font-medium text-ink">
-                  ¿Desactivar el bloqueo?
-                </span>
-                <button
-                  onClick={() => setConfirmingDisable(false)}
-                  disabled={disabling}
-                  className="rounded-btn border border-line px-3 py-2 text-[13px] font-semibold text-ink"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleDisableFaceId}
-                  disabled={disabling}
-                  className="rounded-btn bg-expense px-3 py-2 text-[13px] font-bold text-white disabled:opacity-60"
-                >
-                  {disabling ? "…" : "Sí, desactivar"}
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setConfirmingDisable(true)}
-                className="mt-2 w-full py-2 text-center text-[13px] font-semibold text-expense"
-              >
-                Desactivar Face ID
-              </button>
-            )}
+            <button
+              onClick={() => setConfirmingDisable(true)}
+              className="mt-2 w-full py-2 text-center text-[13px] font-semibold text-expense"
+            >
+              Desactivar Face ID
+            </button>
             {faceIdError && <p className="mt-1 text-xs font-medium text-expense">{faceIdError}</p>}
+            <ConfirmDialog
+              open={confirmingDisable}
+              title="¿Desactivar Face ID?"
+              description="La app dejará de pedir tu identidad al abrirla. Puedes reactivarlo cuando quieras."
+              confirmLabel="Desactivar"
+              pending={disabling}
+              onConfirm={handleDisableFaceId}
+              onCancel={() => setConfirmingDisable(false)}
+            />
           </>
         ) : (
           <>

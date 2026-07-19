@@ -2,11 +2,18 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { Transaction } from "@/lib/types";
+import type { Transaction, TransactionType } from "@/lib/types";
 import { currencySymbol, formatFullDate, formatMoney, formatTime } from "@/lib/format";
-import { confirmTransaction, deleteTransaction } from "@/lib/actions";
+import { confirmTransaction, deleteTransaction, restoreTransaction } from "@/lib/actions";
 import { BackIcon } from "@/components/icons";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useToast } from "@/components/toast";
+
+/** Date UTC → valor para <input type="datetime-local"> en hora local. */
+function toLocalInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: string[] }) {
   const router = useRouter();
@@ -14,15 +21,21 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
   const suggested = tx.category ?? tx.ai_suggested_category;
   const [category, setCategory] = useState<string | null>(suggested);
   const [notes, setNotes] = useState(tx.notes ?? "");
-  const [editingAmount, setEditingAmount] = useState(false);
+  // Modo edición: expone monto, comercio, fecha y tipo — antes solo el
+  // monto era corregible y un "EDEESTE 8184" feo o una fecha mal parseada
+  // no tenían arreglo desde la UI.
+  const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState(tx.amount.toFixed(2));
+  const [merchant, setMerchant] = useState(tx.merchant);
+  const [dateStr, setDateStr] = useState(toLocalInput(new Date(tx.date)));
+  const [type, setType] = useState<TransactionType>(tx.type);
   const [error, setError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, startDeleting] = useTransition();
 
   const date = new Date(tx.date);
-  const isExpense = tx.type === "expense";
+  const isExpense = type === "expense";
   const symbol = currencySymbol(tx.currency);
   const isForeign = tx.currency !== "DOP";
 
@@ -38,12 +51,16 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
     }
     setError(null);
     startSaving(async () => {
-      const parsedAmount = Number(amount);
+      const editedDateIso = new Date(dateStr).toISOString();
       const result = await confirmTransaction({
         id: tx.id,
         category,
         notes: notes || undefined,
-        amount: editingAmount && parsedAmount !== tx.amount ? parsedAmount : undefined,
+        // Solo manda lo que de verdad cambió en modo edición
+        amount: editing && Number(amount) !== tx.amount ? amount : undefined,
+        merchant: editing && merchant.trim() !== tx.merchant ? merchant : undefined,
+        date: editing && editedDateIso !== tx.date ? editedDateIso : undefined,
+        type: editing && type !== tx.type ? type : undefined,
       });
       if (!result.ok) {
         setError(result.error ?? "No se pudo guardar");
@@ -64,7 +81,17 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
         setConfirmingDelete(false);
         return;
       }
-      toast("Transacción eliminada");
+      setConfirmingDelete(false);
+      // Deshacer barato: eliminar es soft delete, restaurar limpia deleted_at
+      toast("Transacción eliminada", "success", {
+        label: "Deshacer",
+        onAction: () => {
+          restoreTransaction(tx.id).then((r) => {
+            toast(r.ok ? "✓ Transacción restaurada" : (r.error ?? "No se pudo restaurar"));
+            router.refresh();
+          });
+        },
+      });
       router.push("/transactions");
       router.refresh();
     });
@@ -85,11 +112,37 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
 
       {/* Monto grande */}
       <div className="px-5 pb-7 pt-5 text-center">
-        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
-          {isExpense ? "Gasto" : "Ingreso"}
-        </div>
-        {editingAmount ? (
-          <div className="flex items-baseline justify-center gap-1.5">
+        {editing ? (
+          <div className="mx-auto flex w-fit rounded-btn border border-line bg-surface p-1">
+            {(
+              [
+                ["expense", "Gasto"],
+                ["income", "Ingreso"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setType(value)}
+                className={`rounded-[9px] px-4 py-1.5 text-[12px] font-bold transition ${
+                  type === value
+                    ? value === "expense"
+                      ? "bg-expense text-white"
+                      : "bg-income text-white"
+                    : "text-ink-muted"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
+            {isExpense ? "Gasto" : "Ingreso"}
+          </div>
+        )}
+        {editing ? (
+          <div className="mt-3 flex items-baseline justify-center gap-1.5">
             <span className="text-base font-bold text-ink-muted">{symbol}</span>
             <input
               type="text"
@@ -121,40 +174,66 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
             {tx.exchange_rate.toFixed(2)}
           </div>
         )}
-        <div className="mt-2.5 text-sm font-medium text-ink-muted">{tx.merchant}</div>
+        {!editing && <div className="mt-2.5 text-sm font-medium text-ink-muted">{tx.merchant}</div>}
       </div>
 
       {/* Datos */}
-      <section className="mx-5 overflow-hidden rounded-card border border-line bg-card">
-        {(
-          [
-            ["Comercio", tx.merchant],
-            ["Fecha", formatFullDate(date)],
-            ["Hora", formatTime(date)],
-            ["Tarjeta", tx.card_last4 ? `•••• ${tx.card_last4}` : "—"],
-            [
-              "Origen",
-              tx.source === "email"
-                ? "✉️ Correo del banco"
-                : tx.source === "voice"
-                  ? "🎤 Atajo de voz"
-                  : tx.source === "manual"
-                    ? "✋ Manual"
-                    : "—",
-            ],
-          ] as const
-        ).map(([label, value], i, all) => (
-          <div
-            key={label}
-            className={`flex items-center justify-between px-4 py-3.5 ${
-              i < all.length - 1 ? "border-b border-line" : ""
-            }`}
-          >
-            <span className="text-[13px] font-medium text-ink-muted">{label}</span>
-            <span className="text-[13px] font-semibold tracking-tight text-ink">{value}</span>
+      {editing ? (
+        <section className="mx-5 flex flex-col gap-3 rounded-card border border-line bg-card p-4">
+          <div>
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+              Comercio
+            </label>
+            <input
+              value={merchant}
+              onChange={(e) => setMerchant(e.target.value)}
+              className="w-full rounded-btn border border-line bg-surface p-3 text-sm text-ink outline-none focus:border-accent"
+            />
           </div>
-        ))}
-      </section>
+          <div>
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+              Fecha y hora
+            </label>
+            <input
+              type="datetime-local"
+              value={dateStr}
+              onChange={(e) => setDateStr(e.target.value)}
+              className="w-full rounded-btn border border-line bg-surface p-3 text-sm text-ink outline-none focus:border-accent"
+            />
+          </div>
+        </section>
+      ) : (
+        <section className="mx-5 overflow-hidden rounded-card border border-line bg-card">
+          {(
+            [
+              ["Comercio", tx.merchant],
+              ["Fecha", formatFullDate(date)],
+              ["Hora", formatTime(date)],
+              ["Tarjeta", tx.card_last4 ? `•••• ${tx.card_last4}` : "—"],
+              [
+                "Origen",
+                tx.source === "email"
+                  ? "✉️ Correo del banco"
+                  : tx.source === "voice"
+                    ? "🎤 Atajo de voz"
+                    : tx.source === "manual"
+                      ? "✋ Manual"
+                      : "—",
+              ],
+            ] as const
+          ).map(([label, value], i, all) => (
+            <div
+              key={label}
+              className={`flex items-center justify-between px-4 py-3.5 ${
+                i < all.length - 1 ? "border-b border-line" : ""
+              }`}
+            >
+              <span className="text-[13px] font-medium text-ink-muted">{label}</span>
+              <span className="text-[13px] font-semibold tracking-tight text-ink">{value}</span>
+            </div>
+          ))}
+        </section>
+      )}
 
       {/* Categoría */}
       <div className="flex items-center gap-1.5 px-5 pb-2.5 pt-6">
@@ -216,42 +295,29 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
           {saving ? "Guardando…" : tx.confirmed ? "Guardar cambios" : "Confirmar"}
         </button>
         <button
-          onClick={() => setEditingAmount((v) => !v)}
+          onClick={() => setEditing((v) => !v)}
           className="mt-1.5 w-full py-3 text-[13px] font-semibold text-accent"
         >
-          {editingAmount ? "Cancelar edición" : "Editar monto"}
+          {editing ? "Cancelar edición" : "Editar transacción"}
         </button>
 
-        {/* Eliminar */}
-        {confirmingDelete ? (
-          <div className="mt-3 flex items-center gap-2 rounded-btn border border-expense/30 bg-expense/5 p-3">
-            <span className="flex-1 text-[13px] font-medium text-ink">
-              ¿Eliminar esta transacción?
-            </span>
-            <button
-              onClick={() => setConfirmingDelete(false)}
-              disabled={deleting}
-              className="rounded-btn border border-line px-3 py-2 text-[13px] font-semibold text-ink"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="rounded-btn bg-expense px-3 py-2 text-[13px] font-bold text-white disabled:opacity-60"
-            >
-              {deleting ? "…" : "Sí, eliminar"}
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setConfirmingDelete(true)}
-            className="mt-1 w-full py-3 text-[13px] font-semibold text-expense"
-          >
-            Eliminar transacción
-          </button>
-        )}
+        <button
+          onClick={() => setConfirmingDelete(true)}
+          className="mt-1 w-full py-3 text-[13px] font-semibold text-expense"
+        >
+          Eliminar transacción
+        </button>
       </div>
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        title="¿Eliminar esta transacción?"
+        description={`${tx.merchant} · ${formatMoney(tx.amount, tx.currency)}. Podrás deshacerlo justo después.`}
+        confirmLabel="Eliminar"
+        pending={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmingDelete(false)}
+      />
     </main>
   );
 }

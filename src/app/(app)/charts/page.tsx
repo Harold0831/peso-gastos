@@ -20,12 +20,21 @@ export default async function ChartsPage({
 }) {
   const { m } = await searchParams;
   const month = parseMonth(m);
-  const [summary, categorySpend, dailyExpenses, homeCurrency] = await Promise.all([
+  const [summary, prevSummary, categorySpend, dailyExpenses, homeCurrency] = await Promise.all([
     getMonthSummary(month),
+    getMonthSummary(subMonths(month, 1)),
     getCategorySpend(month),
     getDailyExpenses(month),
     getHomeCurrency(),
   ]);
+
+  // Delta de gastos vs el mes anterior: el número absoluto dice poco, la
+  // comparación es la que genera el insight. Solo se muestra con datos en
+  // ambos meses.
+  const expenseDelta =
+    prevSummary.expenses > 0 && summary.expenses > 0
+      ? Math.round(((summary.expenses - prevSummary.expenses) / prevSummary.expenses) * 100)
+      : null;
 
   const totalSpend = categorySpend.reduce((s, c) => s + c.amount, 0);
   const prev = format(subMonths(month, 1), "yyyy-MM");
@@ -75,6 +84,16 @@ export default async function ChartsPage({
               {sign}
               {formatMoney(value, homeCurrency)}
             </div>
+            {label === "Gastos" && expenseDelta !== null && (
+              <div
+                className={`mt-0.5 text-[10px] font-bold ${
+                  expenseDelta > 0 ? "text-expense" : "text-income"
+                }`}
+              >
+                {expenseDelta > 0 ? "▲" : "▼"} {Math.abs(expenseDelta)}% vs{" "}
+                {formatMonthLabel(subMonths(month, 1)).split(" ")[0].toLowerCase()}
+              </div>
+            )}
           </div>
         ))}
       </div>
