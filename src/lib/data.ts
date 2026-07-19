@@ -233,6 +233,87 @@ export async function getDailyExpenses(month: Date): Promise<number[]> {
   return result;
 }
 
+export interface AttentionItem {
+  id: string;
+  icon: string;
+  title: string;
+  detail: string;
+  href: string;
+  kind: "gmail" | "budget" | "pending";
+}
+
+/**
+ * Bandeja de notificaciones in-app (la campanita del dashboard). Se DERIVA
+ * del estado actual en vez de persistirse: nunca muestra avisos viejos ya
+ * resueltos ni necesita marcar-como-leído — si algo aparece aquí, sigue
+ * requiriendo atención; cuando se resuelve, desaparece solo.
+ * Orden: roturas (Gmail) → presupuestos excedidos/en riesgo → pendientes.
+ */
+export async function getAttentionItems(): Promise<AttentionItem[]> {
+  const items: AttentionItem[] = [];
+  const now = new Date();
+
+  // Import diferido: users.ts es server-only y depende de la sesión
+  const { formatMoney } = await import("./format");
+
+  if (isSupabaseConfigured()) {
+    const { getGmailStatus } = await import("./users");
+    const gmail = await getGmailStatus(await requireUserId());
+    if (gmail.linked && !gmail.syncEnabled) {
+      items.push({
+        id: "gmail-expired",
+        icon: "✉️",
+        title: "El acceso a tu Gmail expiró",
+        detail: "Reconéctalo para que tus transacciones sigan llegando",
+        href: "/profile",
+        kind: "gmail",
+      });
+    }
+  }
+
+  const [budgets, transactions, home] = await Promise.all([
+    getBudgetsForMonth(now),
+    getTransactions(),
+    getHomeCurrency(),
+  ]);
+
+  for (const { budget, category, spent } of budgets) {
+    const pct = budget.limit_amount > 0 ? spent / budget.limit_amount : 0;
+    if (pct >= 1) {
+      items.push({
+        id: `budget-over-${category.id}`,
+        icon: "🚨",
+        title: `Presupuesto de ${category.name} excedido`,
+        detail: `${formatMoney(spent, home)} de ${formatMoney(budget.limit_amount, home)}`,
+        href: "/budget",
+        kind: "budget",
+      });
+    } else if (pct >= 0.8) {
+      items.push({
+        id: `budget-warn-${category.id}`,
+        icon: "⚠️",
+        title: `Presupuesto de ${category.name} al ${Math.round(pct * 100)}%`,
+        detail: `${formatMoney(spent, home)} de ${formatMoney(budget.limit_amount, home)}`,
+        href: "/budget",
+        kind: "budget",
+      });
+    }
+  }
+
+  for (const t of transactions.filter((t) => !t.confirmed)) {
+    items.push({
+      id: `pending-${t.id}`,
+      icon: "⏳",
+      title: t.merchant,
+      detail: `${formatMoney(t.amount, t.currency)} · por confirmar`,
+      href: `/transactions/${t.id}`,
+      kind: "pending",
+    });
+  }
+
+  return items;
+}
+
 /** Supabase devuelve decimals como string; normaliza a number. */
 function normalizeTransaction(row: Record<string, unknown>): Transaction {
   const t = row as unknown as Transaction;
