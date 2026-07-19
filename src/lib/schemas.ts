@@ -39,8 +39,12 @@ export const confirmSchema = z.object({
   id: z.string().min(1),
   category: z.string().trim().min(1, "Selecciona una categoría"),
   notes: z.string().trim().optional(),
-  // "Editar monto" en la pantalla de confirmación
+  // Modo "Editar transacción" del detalle: solo llegan los campos que
+  // el usuario cambió de verdad (el resto viene undefined).
   amount: amountField("El monto debe ser mayor que 0").optional(),
+  merchant: z.string().trim().min(1, "El comercio no puede quedar vacío").optional(),
+  date: z.string().datetime({ message: "Fecha inválida" }).optional(),
+  type: z.enum(["expense", "income"]).optional(),
 });
 
 export const bulkConfirmSchema = z.object({
@@ -87,6 +91,15 @@ export const voiceEntrySchema = z.discriminatedUnion("mode", [
     text: z.string().trim().min(1, "No recibí ninguna frase"),
   }),
 ]);
+
+/** Suscripción Web Push tal como la entrega pushManager.subscribe().toJSON(). */
+export const pushSubscriptionSchema = z.object({
+  endpoint: z.string().url("Suscripción inválida"),
+  keys: z.object({
+    p256dh: z.string().min(1),
+    auth: z.string().min(1),
+  }),
+});
 
 /** Alta de token de API (endpoint admin). */
 export const mintTokenSchema = z.object({

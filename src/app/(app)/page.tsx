@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { subMonths } from "date-fns";
 import {
   getGoals,
   getHomeCurrency,
@@ -49,13 +50,21 @@ export default async function DashboardPage() {
     hasPasskey = credentials.length > 0;
   }
 
-  const [summary, pendingCount, recent, goals, homeCurrency] = await Promise.all([
+  const [summary, prevSummary, pendingCount, recent, goals, homeCurrency] = await Promise.all([
     getMonthSummary(now),
+    getMonthSummary(subMonths(now, 1)),
     getPendingCount(),
     getTransactions({ limit: 5 }),
     getGoals(),
     getHomeCurrency(),
   ]);
+
+  // Comparación de gastos vs el mes anterior — el "ajá" de una app de
+  // finanzas está en el delta, no en el número absoluto.
+  const expenseDelta =
+    prevSummary.expenses > 0 && summary.expenses > 0
+      ? Math.round(((summary.expenses - prevSummary.expenses) / prevSummary.expenses) * 100)
+      : null;
 
   // Presupuesto ahora vive en la barra de navegación; esta tarjeta da el
   // acceso a Metas (la pantalla que salió del nav por ser de uso esporádico).
@@ -133,6 +142,15 @@ export default async function DashboardPage() {
               <div className="text-[13px] font-bold tracking-tight text-expense">
                 −{formatMoney(summary.expenses, homeCurrency)}
               </div>
+              {expenseDelta !== null && (
+                <div
+                  className={`text-[10px] font-bold ${
+                    expenseDelta > 0 ? "text-expense" : "text-income"
+                  }`}
+                >
+                  {expenseDelta > 0 ? "▲" : "▼"} {Math.abs(expenseDelta)}% vs mes pasado
+                </div>
+              )}
             </div>
           </div>
         </div>

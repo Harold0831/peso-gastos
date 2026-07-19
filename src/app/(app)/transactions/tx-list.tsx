@@ -3,8 +3,9 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { addMonths, subMonths } from "date-fns";
 import type { Transaction } from "@/lib/types";
-import { formatDayLabel } from "@/lib/format";
+import { formatDayLabel, formatMonthLabel } from "@/lib/format";
 import { confirmTransactionsBulk, syncNow } from "@/lib/actions";
 import { TxRow } from "@/components/tx-row";
 import { RefreshIcon } from "@/components/icons";
@@ -25,10 +26,12 @@ const FILTERS: { id: Filter; label: string }[] = [
  *  callejón sin salida. */
 function EmptyState({
   filter,
+  monthLabel,
   syncing,
   onSync,
 }: {
   filter: Filter;
+  monthLabel: string;
   syncing: boolean;
   onSync: () => void;
 }) {
@@ -44,7 +47,9 @@ function EmptyState({
   return (
     <div className="px-5 py-12 text-center">
       <p className="text-sm font-semibold text-ink">
-        {filter === "todos" ? "Sin transacciones todavía" : "Nada por aquí con este filtro"}
+        {filter === "todos"
+          ? `Sin transacciones en ${monthLabel.toLowerCase()}`
+          : "Nada por aquí con este filtro"}
       </p>
       <p className="mt-1 text-[13px] text-ink-muted">
         Llegarán solas desde tu correo, o agrega una a mano.
@@ -90,6 +95,12 @@ export function TxList({
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkSaving, startBulkSaving] = useTransition();
 
+  // Mes visible (con el historial creciendo, la lista plana se volvía
+  // inmanejable) + filtro por categoría. "Por confirmar" ignora el mes a
+  // propósito: una pendiente vieja no debe esconderse por cambiar de mes.
+  const [month, setMonth] = useState(() => new Date());
+  const [category, setCategory] = useState<string | null>(null);
+
   const pendingCount = transactions.filter((t) => !t.confirmed).length;
 
   const changeFilter = (next: Filter) => {
@@ -98,17 +109,29 @@ export function TxList({
   };
 
   const filtered = useMemo(() => {
+    let rows = transactions;
     switch (filter) {
       case "gastos":
-        return transactions.filter((t) => t.type === "expense");
+        rows = rows.filter((t) => t.type === "expense");
+        break;
       case "ingresos":
-        return transactions.filter((t) => t.type === "income");
+        rows = rows.filter((t) => t.type === "income");
+        break;
       case "pendientes":
-        return transactions.filter((t) => !t.confirmed);
-      default:
-        return transactions;
+        rows = rows.filter((t) => !t.confirmed);
+        break;
     }
-  }, [transactions, filter]);
+    if (filter !== "pendientes") {
+      rows = rows.filter((t) => {
+        const d = new Date(t.date);
+        return d.getFullYear() === month.getFullYear() && d.getMonth() === month.getMonth();
+      });
+    }
+    if (category) {
+      rows = rows.filter((t) => (t.category ?? t.ai_suggested_category) === category);
+    }
+    return rows;
+  }, [transactions, filter, month, category]);
 
   const groups = useMemo(() => {
     const map = new Map<string, Transaction[]>();
@@ -210,6 +233,29 @@ export function TxList({
           </button>
         </div>
 
+        {/* Selector de mes (oculto en "Por confirmar": esa vista es global) */}
+        {filter !== "pendientes" && (
+          <div className="flex items-center justify-center gap-2 pb-3">
+            <button
+              onClick={() => setMonth((m) => subMonths(m, 1))}
+              aria-label="Mes anterior"
+              className="flex h-9 w-9 items-center justify-center text-lg text-ink-muted"
+            >
+              ‹
+            </button>
+            <span className="min-w-32 text-center text-[14px] font-bold tracking-tight text-ink">
+              {formatMonthLabel(month)}
+            </span>
+            <button
+              onClick={() => setMonth((m) => addMonths(m, 1))}
+              aria-label="Mes siguiente"
+              className="flex h-9 w-9 items-center justify-center text-lg text-ink-muted"
+            >
+              ›
+            </button>
+          </div>
+        )}
+
         {/* Filter chips */}
         <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-3">
           {FILTERS.map(({ id, label }) => {
@@ -235,6 +281,33 @@ export function TxList({
               </button>
             );
           })}
+        </div>
+
+        {/* Chips de categoría (scroll: son filtros opcionales, no un menú) */}
+        <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-3">
+          <button
+            onClick={() => setCategory(null)}
+            className={`shrink-0 rounded-pill border px-3 py-1.5 text-[11px] font-semibold transition ${
+              category === null
+                ? "border-accent bg-accent/10 text-accent"
+                : "border-line bg-surface text-ink-muted"
+            }`}
+          >
+            Todas
+          </button>
+          {categories.map((name) => (
+            <button
+              key={name}
+              onClick={() => setCategory((c) => (c === name ? null : name))}
+              className={`shrink-0 rounded-pill border px-3 py-1.5 text-[11px] font-semibold transition ${
+                category === name
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-line bg-surface text-ink-muted"
+              }`}
+            >
+              {name}
+            </button>
+          ))}
         </div>
 
         {filter === "pendientes" && filtered.length > 0 && (
@@ -267,7 +340,12 @@ export function TxList({
         )}
 
         {groups.length === 0 ? (
-          <EmptyState filter={filter} syncing={syncing} onSync={handleSync} />
+          <EmptyState
+            filter={filter}
+            monthLabel={formatMonthLabel(month)}
+            syncing={syncing}
+            onSync={handleSync}
+          />
         ) : (
           groups.map(([day, items]) => (
             <section key={day} className="mb-3">

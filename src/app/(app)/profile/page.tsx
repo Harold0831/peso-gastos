@@ -6,6 +6,11 @@ import { ProfileClient } from "./profile-client";
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
+  // La sección de notificaciones solo aparece si las claves VAPID existen
+  const pushConfigured = Boolean(
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY,
+  );
+
   // Modo demo: sin Supabase no hay usuario ni Gmail que mostrar
   if (!isSupabaseConfigured()) {
     return (
@@ -15,6 +20,7 @@ export default async function ProfilePage() {
         avatarUrl={null}
         gmail={{ linked: false, email: null, syncEnabled: false, enabledBanks: null }}
         hasPasskey={false}
+        pushConfigured={false}
         demoMode
       />
     );
@@ -39,6 +45,7 @@ export default async function ProfilePage() {
         enabledBanks: gmail.enabledBanks,
       }}
       hasPasskey={credentials.length > 0}
+      pushConfigured={pushConfigured}
     />
   );
 }
