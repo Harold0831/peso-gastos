@@ -366,6 +366,7 @@ Project Settings → Environment Variables.
 | `CRON_SECRET`                             | Protege /api/gmail-watch/renew — **debe llamarse así**, Vercel lo inyecta automáticamente en sus crons | `openssl rand -hex 32`              |
 | `SESSION_SECRET`                          | Firma la cookie JWT de sesión                                                                          | `openssl rand -base64 32`           |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push (opcional): sin ellas la sección "Notificaciones" del perfil no aparece y nada más cambia | `npx web-push generate-vapid-keys`  |
+| `VAPID_CONTACT_EMAIL`                     | Contacto que los servicios de push pueden usar si hay un problema con tus envíos (opcional; default placeholder) | Tu email                            |
 
 ## Configurar Google (login + Gmail multi-usuario)
 

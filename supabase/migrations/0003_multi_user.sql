@@ -38,20 +38,26 @@ create table if not exists public.feedback (
 
 alter table public.feedback enable row level security;
 
--- 4. Usuario de Harold + backfill de todos los datos existentes
-insert into public.users (email, name)
-values ('harold3112@gmail.com', 'Harold')
-on conflict (email) do nothing;
-
+-- 4. Columna user_id + (opcional) backfill de datos pre-multiusuario
 alter table public.transactions add column if not exists user_id uuid references public.users (id) on delete cascade;
 alter table public.budgets add column if not exists user_id uuid references public.users (id) on delete cascade;
 alter table public.savings_goals add column if not exists user_id uuid references public.users (id) on delete cascade;
 alter table public.webauthn_credentials add column if not exists user_id uuid references public.users (id) on delete cascade;
 
-update public.transactions set user_id = u.id from public.users u where u.email = 'harold3112@gmail.com' and public.transactions.user_id is null;
-update public.budgets set user_id = u.id from public.users u where u.email = 'harold3112@gmail.com' and public.budgets.user_id is null;
-update public.savings_goals set user_id = u.id from public.users u where u.email = 'harold3112@gmail.com' and public.savings_goals.user_id is null;
-update public.webauthn_credentials set user_id = u.id from public.users u where u.email = 'harold3112@gmail.com' and public.webauthn_credentials.user_id is null;
+-- Backfill: SOLO necesario si migras una base que ya tenía datos de la época
+-- de un solo usuario (antes de multiusuario). En una instalación nueva no hay
+-- filas que asignar y tu usuario se crea solo al entrar con Google, así que
+-- este bloque queda comentado. Si vienes de una versión single-user,
+-- descoméntalo y pon tu email:
+--
+-- insert into public.users (email, name)
+-- values ('you@example.com', 'Tu nombre')
+-- on conflict (email) do nothing;
+--
+-- update public.transactions set user_id = u.id from public.users u where u.email = 'you@example.com' and public.transactions.user_id is null;
+-- update public.budgets set user_id = u.id from public.users u where u.email = 'you@example.com' and public.budgets.user_id is null;
+-- update public.savings_goals set user_id = u.id from public.users u where u.email = 'you@example.com' and public.savings_goals.user_id is null;
+-- update public.webauthn_credentials set user_id = u.id from public.users u where u.email = 'you@example.com' and public.webauthn_credentials.user_id is null;
 
 alter table public.transactions alter column user_id set not null;
 alter table public.budgets alter column user_id set not null;

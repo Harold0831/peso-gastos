@@ -31,8 +31,12 @@ function vapidConfigured(): boolean {
 export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
   if (!vapidConfigured() || !isSupabaseConfigured()) return;
 
+  // Contacto que los servicios de push (FCM, Apple) pueden usar si hay un
+  // problema con tus envíos. Configúralo con VAPID_CONTACT_EMAIL; el valor
+  // por defecto es un placeholder para que la app arranque sin configurarlo.
+  const contact = process.env.VAPID_CONTACT_EMAIL || "admin@example.com";
   webpush.setVapidDetails(
-    "mailto:harold3112@gmail.com",
+    `mailto:${contact}`,
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
     process.env.VAPID_PRIVATE_KEY!,
   );
