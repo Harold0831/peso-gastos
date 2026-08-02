@@ -92,6 +92,29 @@ export const voiceEntrySchema = z.discriminatedUnion("mode", [
   }),
 ]);
 
+/** Saldo disponible que el usuario fija a mano ("Ajustar saldo"). A
+ *  diferencia de un monto de transacción, puede ser cero o negativo (estar
+ *  en rojo), así que no usa amountField. */
+export const openingBalanceSchema = z.object({
+  amount: z.preprocess(normalizeAmount, z.number({ message: "Escribe un monto válido" })),
+});
+
+/** Gasto fijo / pago recurrente. El monto es opcional (algunos varían). */
+export const recurringExpenseSchema = z.object({
+  name: z.string().trim().min(1, "Escribe un nombre").max(40, "Máximo 40 caracteres"),
+  amount: amountField("El monto debe ser mayor que 0").optional(),
+  currency: z.enum(["DOP", "USD", "EUR"]).default("DOP"),
+  category: z.string().trim().min(1).optional(),
+  due_day: z.coerce.number().int().min(1).max(31).optional(),
+});
+
+/** Marca un gasto fijo como pagado/pendiente en un mes (override manual). */
+export const recurringPaidSchema = z.object({
+  recurring_id: z.string().min(1),
+  month: z.string().regex(/^\d{4}-\d{2}-01$/, "Mes inválido"),
+  status: z.enum(["paid", "pending"]),
+});
+
 /** Categoría personalizada del usuario (perfil → "Mis categorías"). El
  *  emoji y el color se eligen de paletas fijas en la UI, pero se validan
  *  igual aquí por si la request no viene del formulario. */

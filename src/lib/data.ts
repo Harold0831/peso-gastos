@@ -4,8 +4,22 @@ import { endOfMonth, startOfMonth } from "date-fns";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
 import { getHomeCurrencyForUser, requireUserId } from "./users";
 import { getLatestCachedRate } from "./exchange-rate";
-import { MOCK_BUDGETS, MOCK_CATEGORIES, MOCK_GOALS, MOCK_TRANSACTIONS } from "./mock-data";
-import type { Budget, Category, Currency, SavingsGoal, Transaction } from "./types";
+import {
+  MOCK_BUDGETS,
+  MOCK_CATEGORIES,
+  MOCK_GOALS,
+  MOCK_RECURRING,
+  MOCK_TRANSACTIONS,
+} from "./mock-data";
+import type {
+  Budget,
+  Category,
+  Currency,
+  RecurringExpense,
+  RecurringStatusItem,
+  SavingsGoal,
+  Transaction,
+} from "./types";
 
 /**
  * Capa de lectura de datos, siempre acotada al usuario de la sesión
@@ -139,6 +153,46 @@ export async function getMonthSummary(month: Date): Promise<MonthSummary> {
 }
 
 /**
+ * Saldo disponible que persiste entre meses (el número grande del dashboard).
+ * Es `opening_balance` (el saldo real que el usuario fijó con "Ajustar saldo")
+ * más ingresos − gastos de las transacciones posteriores a esa fecha. Sin
+ * fijar nada, `opening_balance` es 0 y `as_of` null → sale el acumulado de
+ * TODO lo registrado, que ya no se reinicia cada mes.
+ */
+export async function getAvailableBalance(): Promise<number> {
+  const home = await getHomeCurrency();
+  if (!isSupabaseConfigured()) {
+    const rows = MOCK_TRANSACTIONS.filter((t) => !t.deleted_at);
+    const toHome = await homeConverter(rows, home);
+    return rows.reduce((s, t) => s + (t.type === "income" ? toHome(t) : -toHome(t)), 0);
+  }
+
+  const userId = await requireUserId();
+  const { data: user } = await getSupabaseAdmin()
+    .from("users")
+    .select("opening_balance, opening_balance_as_of")
+    .eq("id", userId)
+    .maybeSingle();
+  const opening = Number(user?.opening_balance ?? 0);
+  const asOf = (user?.opening_balance_as_of as string | null) ?? null;
+
+  let query = getSupabaseAdmin()
+    .from("transactions")
+    .select("*")
+    .eq("user_id", userId)
+    .is("deleted_at", null);
+  // Solo cuentan las transacciones posteriores al saldo fijado (las anteriores
+  // ya están "dentro" de ese número); sin as_of, cuentan todas.
+  if (asOf) query = query.gt("date", asOf);
+  const { data, error } = await query;
+  if (error) throw new Error(`Error calculando balance: ${error.message}`);
+
+  const rows = (data ?? []).map(normalizeTransaction);
+  const toHome = await homeConverter(rows, home);
+  return rows.reduce((s, t) => s + (t.type === "income" ? toHome(t) : -toHome(t)), opening);
+}
+
+/**
  * Categorías visibles para el usuario en sesión: las globales (seed,
  * user_id null) más las que él mismo creó. Es la lista que alimenta el
  * alta manual, el detalle, los presupuestos, las gráficas y la sugerencia
@@ -257,6 +311,84 @@ export async function getDailyExpenses(month: Date): Promise<number[]> {
     result[new Date(t.date).getDate() - 1] += toHome(t);
   }
   return result;
+}
+
+function monthKeyOf(month: Date): string {
+  return `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function normalizeRecurring(row: Record<string, unknown>): RecurringExpense {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    amount: row.amount === null || row.amount === undefined ? null : Number(row.amount),
+    currency: (row.currency as Currency) ?? "DOP",
+    category: (row.category as string | null) ?? null,
+    due_day: row.due_day === null || row.due_day === undefined ? null : Number(row.due_day),
+    active: Boolean(row.active),
+    created_at: row.created_at as string,
+  };
+}
+
+/** Gastos fijos activos del usuario, ordenados por día de pago. */
+export async function getRecurringExpenses(): Promise<RecurringExpense[]> {
+  if (!isSupabaseConfigured()) return MOCK_RECURRING;
+  const { data, error } = await getSupabaseAdmin()
+    .from("recurring_expenses")
+    .select("*")
+    .eq("user_id", await requireUserId())
+    .eq("active", true)
+    .order("due_day", { ascending: true, nullsFirst: false });
+  if (error) throw new Error(`Error cargando gastos fijos: ${error.message}`);
+  return (data ?? []).map(normalizeRecurring);
+}
+
+/** ¿Una transacción del mes cuadra con este gasto fijo? Match por nombre
+ *  (el nombre del gasto fijo aparece en el comercio, sin distinguir
+ *  mayúsculas) — suficiente para "Netflix", "Claro", "EDEESTE", etc. */
+function matchesRecurring(expense: RecurringExpense, merchant: string): boolean {
+  const name = expense.name.trim().toLowerCase();
+  if (name.length < 3) return false;
+  return merchant.toLowerCase().includes(name);
+}
+
+/**
+ * Gastos fijos resueltos para un mes: pagado o pendiente. El estado sale de
+ * (1) un override manual en recurring_payments si existe, o si no (2)
+ * auto-detección: hay una transacción de gasto este mes cuyo comercio cuadra
+ * con el nombre del gasto fijo. Pensado para el dashboard y la pantalla
+ * /recurring.
+ */
+export async function getRecurringForMonth(month: Date): Promise<RecurringStatusItem[]> {
+  const expenses = await getRecurringExpenses();
+  if (expenses.length === 0) return [];
+
+  const monthTx = (await getTransactions({ month })).filter(
+    (t) => t.type === "expense" && t.confirmed,
+  );
+
+  const overrides = new Map<string, "paid" | "pending">();
+  if (isSupabaseConfigured()) {
+    const { data } = await getSupabaseAdmin()
+      .from("recurring_payments")
+      .select("recurring_id, status")
+      .eq("user_id", await requireUserId())
+      .eq("month", monthKeyOf(month));
+    for (const row of data ?? []) {
+      overrides.set(row.recurring_id as string, row.status as "paid" | "pending");
+    }
+  }
+
+  return expenses.map((expense) => {
+    const override = overrides.get(expense.id);
+    if (override) {
+      return { expense, status: override, auto: false, matchedMerchant: null };
+    }
+    const match = monthTx.find((t) => matchesRecurring(expense, t.merchant));
+    return match
+      ? { expense, status: "paid" as const, auto: true, matchedMerchant: match.merchant }
+      : { expense, status: "pending" as const, auto: false, matchedMerchant: null };
+  });
 }
 
 export interface AttentionItem {
