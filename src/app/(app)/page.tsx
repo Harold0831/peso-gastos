@@ -6,7 +6,6 @@ import {
   getGoals,
   getHomeCurrency,
   getMonthSummary,
-  getPendingCount,
   getRecurringForMonth,
   getTransactions,
 } from "@/lib/data";
@@ -59,7 +58,6 @@ export default async function DashboardPage() {
     prevSummary,
     availableBalance,
     attention,
-    pendingCount,
     recent,
     goals,
     recurring,
@@ -69,7 +67,6 @@ export default async function DashboardPage() {
     getMonthSummary(subMonths(now, 1)),
     getAvailableBalance(),
     getAttentionItems(),
-    getPendingCount(),
     getTransactions({ limit: 5 }),
     getGoals(),
     getRecurringForMonth(now),
@@ -259,70 +256,47 @@ export default async function DashboardPage() {
         </Dismissible>
       )}
 
-      {/* Pendientes */}
-      {pendingCount > 0 && (
+      {/* Accesos compactos: Gastos fijos y Metas en una sola fila (los
+          pendientes ya viven en la campanita, no se duplican aquí) */}
+      <div className="mt-3.5 grid grid-cols-2 gap-2.5">
         <Link
-          href="/transactions?filter=pendientes"
-          className="mt-3.5 flex items-center gap-3 rounded-[14px] border border-line bg-surface px-4 py-3"
+          href="/recurring"
+          className="flex flex-col gap-2 rounded-[14px] border border-line bg-surface px-4 py-3.5"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-accent/10 text-[13px] font-bold text-accent">
-            {pendingCount}
+          <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-background text-ink">
+            <RefreshIcon />
           </span>
-          <span className="flex-1">
-            <span className="block text-[13px] font-semibold text-ink">
-              {pendingCount === 1
-                ? "1 transacción por confirmar"
-                : `${pendingCount} transacciones por confirmar`}
-            </span>
-            <span className="block text-[11px] text-ink-muted">
-              Importadas desde Gmail · Toca para revisar
+          <span>
+            <span className="block text-[13px] font-semibold text-ink">Gastos fijos</span>
+            <span className="mt-0.5 block text-[11px] text-ink-muted">
+              {recurring.length === 0
+                ? "Regístralos"
+                : recurringPaid === recurring.length
+                  ? "🎉 Todos pagados"
+                  : `${recurringPaid}/${recurring.length} pagados`}
             </span>
           </span>
-          <ChevronIcon className="text-ink-muted" />
         </Link>
-      )}
 
-      {/* Acceso a gastos fijos */}
-      <Link
-        href="/recurring"
-        className="mt-3.5 flex items-center gap-3 rounded-[14px] border border-line bg-surface px-4 py-3"
-      >
-        <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-background text-ink">
-          <RefreshIcon />
-        </span>
-        <span className="flex-1">
-          <span className="block text-[13px] font-semibold text-ink">Gastos fijos</span>
-          <span className="block text-[11px] text-ink-muted">
-            {recurring.length === 0
-              ? "Registra tus pagos recurrentes"
-              : recurringPaid === recurring.length
-                ? "🎉 Todos pagados este mes"
-                : `${recurringPaid} de ${recurring.length} pagados este mes`}
+        <Link
+          href="/goals"
+          className="flex flex-col gap-2 rounded-[14px] border border-line bg-surface px-4 py-3.5"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-background text-ink">
+            <TargetIcon size={18} />
           </span>
-        </span>
-        <ChevronIcon className="text-ink-muted" />
-      </Link>
-
-      {/* Acceso a metas de ahorro */}
-      <Link
-        href="/goals"
-        className="mt-3.5 flex items-center gap-3 rounded-[14px] border border-line bg-surface px-4 py-3"
-      >
-        <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-background text-ink">
-          <TargetIcon size={18} />
-        </span>
-        <span className="flex-1">
-          <span className="block text-[13px] font-semibold text-ink">Metas de ahorro</span>
-          <span className="block text-[11px] text-ink-muted">
-            {goals.length === 0
-              ? "Crea tu primera meta"
-              : activeGoals === 0
-                ? "🎉 Todas tus metas completadas"
-                : `${activeGoals} ${activeGoals === 1 ? "meta activa" : "metas activas"}`}
+          <span>
+            <span className="block text-[13px] font-semibold text-ink">Metas de ahorro</span>
+            <span className="mt-0.5 block text-[11px] text-ink-muted">
+              {goals.length === 0
+                ? "Crea la primera"
+                : activeGoals === 0
+                  ? "🎉 Completadas"
+                  : `${activeGoals} ${activeGoals === 1 ? "activa" : "activas"}`}
+            </span>
           </span>
-        </span>
-        <ChevronIcon className="text-ink-muted" />
-      </Link>
+        </Link>
+      </div>
 
       {/* Recientes */}
       <div className="flex items-center justify-between pb-2.5 pt-6">
