@@ -1,4 +1,4 @@
-import type { Budget, Category, SavingsGoal, Transaction } from "./types";
+import type { Budget, Category, RecurringExpense, SavingsGoal, Transaction } from "./types";
 
 /**
  * Datos de ejemplo para desarrollo local sin Supabase configurado.
@@ -223,5 +223,41 @@ export const MOCK_GOALS: SavingsGoal[] = [
     icon: "🏝️",
     color: "#D97706",
     created_at: daysAgo(20, 0, 0),
+  },
+];
+
+export const MOCK_RECURRING: RecurringExpense[] = [
+  // "Netflix" cuadra con la transacción mock t9 → se auto-detecta como pagado
+  {
+    id: "r1",
+    name: "Netflix",
+    amount: 649,
+    currency: "DOP",
+    category: "Entretenimiento",
+    due_day: 4,
+    active: true,
+    created_at: daysAgo(90, 0, 0),
+  },
+  // "Claro" cuadra con t5 → pagado
+  {
+    id: "r2",
+    name: "Claro",
+    amount: 1450,
+    currency: "DOP",
+    category: "Servicios/Facturas",
+    due_day: 1,
+    active: true,
+    created_at: daysAgo(90, 0, 0),
+  },
+  // Sin transacción que cuadre → queda pendiente
+  {
+    id: "r3",
+    name: "Alquiler",
+    amount: 18000,
+    currency: "DOP",
+    category: "Servicios/Facturas",
+    due_day: 1,
+    active: true,
+    created_at: daysAgo(90, 0, 0),
   },
 ];

@@ -67,6 +67,32 @@ export interface SavingsGoal {
   created_at: string;
 }
 
+/** Gasto fijo / pago recurrente (alquiler, Netflix, la luz…). Ver migración
+ *  0010. Distinto de un presupuesto: es un pago concreto que se repite, no un
+ *  techo por categoría. */
+export interface RecurringExpense {
+  id: string;
+  name: string;
+  amount: number | null;
+  currency: Currency;
+  category: string | null;
+  /** Día del mes en que se paga (1-31), opcional. */
+  due_day: number | null;
+  active: boolean;
+  created_at: string;
+}
+
+/** Un gasto fijo resuelto para un mes concreto: si está pagado y de dónde
+ *  salió ese estado (auto-detectado de una transacción, o marcado a mano). */
+export interface RecurringStatusItem {
+  expense: RecurringExpense;
+  status: "paid" | "pending";
+  /** true si el "pagado" salió de auto-detectar una transacción del mes. */
+  auto: boolean;
+  /** Comercio de la transacción que disparó el auto-match (para mostrarlo). */
+  matchedMerchant: string | null;
+}
+
 /** Resultado de un parser de correo bancario, previo a insertar en la DB. */
 export interface ParsedBankEmail {
   type: TransactionType;

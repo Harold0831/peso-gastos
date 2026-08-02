@@ -95,6 +95,8 @@ supabase/
 ├── migrations/0006_...sql   # push_subscriptions (Web Push por dispositivo)
 ├── migrations/0007_...sql   # notification_dismissals (descartes de la bandeja)
 ├── migrations/0008_...sql   # categories.user_id (personalizadas por usuario)
+├── migrations/0009_...sql   # users.opening_balance (saldo disponible persistente)
+├── migrations/0010_...sql   # recurring_expenses + recurring_payments (gastos fijos)
 └── seed.sql                 # Categorías por defecto (globales, user_id null)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
@@ -197,6 +199,29 @@ design/                      # Referencias visuales (no es código de la app)
   o un presupuesto (FK con cascade que se perdería) — el usuario reasigna
   primero. Las globales nunca se editan ni se borran (el filtro por
   `user_id` lo impide).
+- **Saldo disponible persistente** (`users.opening_balance` +
+  `opening_balance_as_of`, migración `0009`): el número grande del dashboard
+  ya NO es ingresos−gastos del mes (se reiniciaba a cero cada mes). Ahora es
+  `getAvailableBalance()` = `opening_balance` + (ingresos − gastos de las
+  transacciones POSTERIORES a `as_of`), en moneda de casa. Sin fijar nada
+  (`opening_balance` 0, `as_of` null) sale el acumulado de TODO lo
+  registrado. "Ajustar saldo" (`AdjustBalanceDialog` → `setOpeningBalance`)
+  fija el saldo real de hoy (`as_of` = now): las transacciones previas quedan
+  "dentro" de ese número y solo las nuevas lo mueven. Los pills de
+  Ingresos/Gastos siguen siendo mensuales.
+- **Gastos fijos / pagos recurrentes** (`recurring_expenses` +
+  `recurring_payments`, migración `0010`): distinto de un presupuesto (techo
+  por categoría) — es un pago concreto que se repite (alquiler, Netflix, la
+  luz) y quieres saber si ya lo pagaste este mes. `getRecurringForMonth()`
+  resuelve cada gasto fijo a pagado/pendiente: (1) si hay un override manual
+  en `recurring_payments` para ese mes lo usa; si no (2) **auto-detecta** —
+  hay una transacción de gasto confirmada este mes cuyo comercio contiene el
+  nombre del gasto fijo (`matchesRecurring`). El toggle en /recurring
+  (`setRecurringPaid`) escribe el override — `paid` para marcar algo que Peso
+  no detectó (p. ej. efectivo), `pending` para deshacer un auto-match
+  equivocado. Pantalla `/recurring` + tarjeta en el dashboard ("N/M pagados
+  este mes"). CRUD vía `createRecurringExpense`/`deleteRecurringExpense`;
+  borrar no toca transacciones.
 - **Confirmación en lote** (`confirmTransactionsBulk`): en /transactions,
   filtro "Por confirmar" → "Seleccionar varias" activa checkboxes en
   `TxRow` (prop `selectable`). Si 2+ pendientes comparten la misma

@@ -13,7 +13,10 @@ import {
   dismissNotificationsSchema,
   enabledBanksSchema,
   goalSchema,
+  openingBalanceSchema,
   pushSubscriptionSchema,
+  recurringExpenseSchema,
+  recurringPaidSchema,
   transactionSchema,
 } from "./schemas";
 
@@ -227,6 +230,98 @@ export async function createTransaction(input: unknown): Promise<ActionResult> {
     await maybeNotifyBudgetThreshold(parsed.data.category, [created.id]);
   }
   revalidateAll();
+  return { ok: true };
+}
+
+/**
+ * Fija el saldo disponible real del usuario ("Ajustar saldo" del dashboard).
+ * Guarda el monto y la fecha (ahora): de ahí en adelante el balance mostrado
+ * es este saldo + los movimientos posteriores. Las transacciones anteriores
+ * quedan "dentro" de este número.
+ */
+export async function setOpeningBalance(input: unknown): Promise<ActionResult> {
+  const parsed = openingBalanceSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("users")
+    .update({
+      opening_balance: parsed.data.amount,
+      opening_balance_as_of: new Date().toISOString(),
+    })
+    .eq("id", await requireUserId());
+  if (error) return { ok: false, error: friendlyDbError(error, "setOpeningBalance") };
+
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/** Crea un gasto fijo / pago recurrente (pantalla "Gastos fijos"). */
+export async function createRecurringExpense(input: unknown): Promise<ActionResult> {
+  const parsed = recurringExpenseSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("recurring_expenses")
+    .insert({
+      user_id: await requireUserId(),
+      name: parsed.data.name,
+      amount: parsed.data.amount ?? null,
+      currency: parsed.data.currency,
+      category: parsed.data.category ?? null,
+      due_day: parsed.data.due_day ?? null,
+    });
+  if (error) return { ok: false, error: friendlyDbError(error, "createRecurringExpense") };
+
+  revalidatePath("/");
+  revalidatePath("/recurring");
+  return { ok: true };
+}
+
+/** Elimina un gasto fijo (y sus marcas de pago por cascade). */
+export async function deleteRecurringExpense(id: string): Promise<ActionResult> {
+  if (!id) return { ok: false, error: "Falta el id" };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("recurring_expenses")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", await requireUserId());
+  if (error) return { ok: false, error: friendlyDbError(error, "deleteRecurringExpense") };
+
+  revalidatePath("/");
+  revalidatePath("/recurring");
+  return { ok: true };
+}
+
+/**
+ * Marca un gasto fijo como pagado o pendiente en un mes (override manual del
+ * auto-detectado). Upsert por (recurring_id, month): re-marcar sobreescribe.
+ */
+export async function setRecurringPaid(input: unknown): Promise<ActionResult> {
+  const parsed = recurringPaidSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("recurring_payments")
+    .upsert(
+      {
+        user_id: await requireUserId(),
+        recurring_id: parsed.data.recurring_id,
+        month: parsed.data.month,
+        status: parsed.data.status,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "recurring_id,month" },
+    );
+  if (error) return { ok: false, error: friendlyDbError(error, "setRecurringPaid") };
+
+  revalidatePath("/");
+  revalidatePath("/recurring");
   return { ok: true };
 }
 

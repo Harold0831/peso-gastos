@@ -2,21 +2,24 @@ import Link from "next/link";
 import { subMonths } from "date-fns";
 import {
   getAttentionItems,
+  getAvailableBalance,
   getGoals,
   getHomeCurrency,
   getMonthSummary,
   getPendingCount,
+  getRecurringForMonth,
   getTransactions,
 } from "@/lib/data";
 import { currencySymbol, formatMoney, formatMonthLabel, merchantInitials } from "@/lib/format";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { getGmailStatus, getUserById, requireUserId, type GmailStatus } from "@/lib/users";
 import { getCredentialsForUser } from "@/lib/webauthn";
+import { AdjustBalanceDialog } from "@/components/adjust-balance-dialog";
 import { Donut } from "@/components/donut";
 import { Dismissible } from "@/components/dismissible";
 import { OnboardingCard } from "@/components/onboarding-card";
 import { TxRow } from "@/components/tx-row";
-import { BellIcon, ChevronIcon, TargetIcon } from "@/components/icons";
+import { BellIcon, ChevronIcon, RefreshIcon, TargetIcon } from "@/components/icons";
 
 export const dynamic = "force-dynamic";
 
@@ -51,16 +54,30 @@ export default async function DashboardPage() {
     hasPasskey = credentials.length > 0;
   }
 
-  const [summary, prevSummary, attention, pendingCount, recent, goals, homeCurrency] =
-    await Promise.all([
-      getMonthSummary(now),
-      getMonthSummary(subMonths(now, 1)),
-      getAttentionItems(),
-      getPendingCount(),
-      getTransactions({ limit: 5 }),
-      getGoals(),
-      getHomeCurrency(),
-    ]);
+  const [
+    summary,
+    prevSummary,
+    availableBalance,
+    attention,
+    pendingCount,
+    recent,
+    goals,
+    recurring,
+    homeCurrency,
+  ] = await Promise.all([
+    getMonthSummary(now),
+    getMonthSummary(subMonths(now, 1)),
+    getAvailableBalance(),
+    getAttentionItems(),
+    getPendingCount(),
+    getTransactions({ limit: 5 }),
+    getGoals(),
+    getRecurringForMonth(now),
+    getHomeCurrency(),
+  ]);
+
+  // Gastos fijos: cuántos ya se pagaron este mes (tarjeta del dashboard)
+  const recurringPaid = recurring.filter((r) => r.status === "paid").length;
 
   // Comparación de gastos vs el mes anterior — el "ajá" de una app de
   // finanzas está en el delta, no en el número absoluto.
@@ -108,31 +125,40 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      {/* Balance card */}
+      {/* Balance card — el número grande es el saldo disponible (persiste
+          entre meses); los pills son los movimientos del mes actual */}
       <section className="rounded-card border border-line bg-card p-6 shadow-card">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">
-            Balance de {formatMonthLabel(now).toLowerCase()}
+            Saldo disponible
           </span>
           <Donut income={summary.income} expenses={summary.expenses} />
         </div>
         <div className="mt-2 flex items-baseline gap-1.5">
           <span className="text-sm font-semibold text-ink-muted">
-            {summary.net < 0 ? "−" : ""}
+            {availableBalance < 0 ? "−" : ""}
             {currencySymbol(homeCurrency)}
           </span>
           <span
             className={`text-[38px] font-extrabold leading-none tracking-tighter ${
-              summary.net < 0 ? "text-expense" : "text-ink"
+              availableBalance < 0 ? "text-expense" : "text-ink"
             }`}
           >
-            {Math.abs(summary.net).toLocaleString("en-US", {
+            {Math.abs(availableBalance).toLocaleString("en-US", {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             })}
           </span>
         </div>
-        <div className="mt-5 flex gap-2">
+        <AdjustBalanceDialog
+          currentBalance={availableBalance}
+          currency={homeCurrency}
+          demoMode={!isSupabaseConfigured()}
+        />
+        <div className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+          Movimientos de {formatMonthLabel(now).toLowerCase()}
+        </div>
+        <div className="flex gap-2">
           <div className="flex flex-1 items-center gap-2 rounded-btn bg-background px-3 py-2.5">
             <span className="h-1.5 w-1.5 rounded-pill bg-income" />
             <div>
@@ -255,6 +281,27 @@ export default async function DashboardPage() {
           <ChevronIcon className="text-ink-muted" />
         </Link>
       )}
+
+      {/* Acceso a gastos fijos */}
+      <Link
+        href="/recurring"
+        className="mt-3.5 flex items-center gap-3 rounded-[14px] border border-line bg-surface px-4 py-3"
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-background text-ink">
+          <RefreshIcon />
+        </span>
+        <span className="flex-1">
+          <span className="block text-[13px] font-semibold text-ink">Gastos fijos</span>
+          <span className="block text-[11px] text-ink-muted">
+            {recurring.length === 0
+              ? "Registra tus pagos recurrentes"
+              : recurringPaid === recurring.length
+                ? "🎉 Todos pagados este mes"
+                : `${recurringPaid} de ${recurring.length} pagados este mes`}
+          </span>
+        </span>
+        <ChevronIcon className="text-ink-muted" />
+      </Link>
 
       {/* Acceso a metas de ahorro */}
       <Link
