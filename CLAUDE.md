@@ -50,9 +50,11 @@ src/
 │   │   │   └── loading.tsx   #    estado real de cada sección
 │   │   ├── categories/       # 9. Categorías: crear/editar propias, eliminar
 │   │   │   └── loading.tsx   #    las por defecto (+ restablecerlas)
-│   │   ├── profile/          # 10. Perfil: Gmail, bancos, Face ID, push
+│   │   ├── cards/            # 10. Tarjetas: gasto por tarjeta, con
+│   │   │   └── loading.tsx   #     auto-descubrimiento desde card_last4
+│   │   ├── profile/          # 11. Perfil: Gmail, bancos, Face ID, push
 │   │   │   └── loading.tsx
-│   │   └── notifications/    # 11. Bandeja (campanita): derivada del estado,
+│   │   └── notifications/    # 12. Bandeja (campanita): derivada del estado,
 │   │       └── loading.tsx   #    ver getAttentionItems() — sin tabla propia
 │   └── api/
 │       ├── auth/google/        # GET inicia OAuth; callback crea usuario+sesión
@@ -104,6 +106,7 @@ supabase/
 ├── migrations/0009_...sql   # users.opening_balance (saldo disponible persistente)
 ├── migrations/0010_...sql   # recurring_expenses + recurring_payments (gastos fijos)
 ├── migrations/0011_...sql   # hidden_categories (ocultar las por defecto)
+├── migrations/0012_...sql   # cards (nombre a los card_last4 ya guardados)
 └── seed.sql                 # Categorías por defecto (globales, user_id null)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
@@ -224,6 +227,23 @@ design/                      # Referencias visuales (no es código de la app)
   **no deja quitar la última categoría visible**: el alta de transacciones
   exige elegir una y quedarse en cero sería un callejón sin salida (mismo
   criterio que "Mis bancos").
+- **Tarjetas** (`cards`, migración `0012`): control de gasto por tarjeta.
+  Lo barato de esta función es que **`transactions.card_last4` ya existía
+  desde el inicio** y los 5 parsers lo llenan, así que todo el historial ya
+  venía etiquetado: la tabla `cards` solo le pone NOMBRE a unos últimos 4
+  dígitos. El vínculo es por `(user_id, last4)`, **no** una FK en
+  transactions — por eso registrar una tarjeta agrupa al instante los
+  movimientos viejos, sin backfill, y borrarla solo quita la etiqueta.
+  `getUnregisteredCards()` alimenta el **auto-descubrimiento**: lista los
+  last4 que aparecen en las transacciones y aún no tienen tarjeta, con su
+  conteo, para que el usuario solo les ponga nombre en vez de teclearlos.
+  La función es **opcional de verdad**: sin tarjetas registradas no
+  aparecen ni el filtro en /transactions ni el selector en el alta manual.
+  El alta manual escribe `card_last4` (mismo campo que los correos) y las
+  transacciones sin tarjeta (efectivo, transferencias, voz) quedan fuera de
+  todo agrupado, que es lo correcto. `type` (débito/crédito) es
+  **informativo**: a propósito NO cambia el saldo ni los presupuestos —
+  modelar el crédito de verdad exigiría ciclos de corte y pagos de factura.
 - **Saldo disponible persistente** (`users.opening_balance` +
   `opening_balance_as_of`, migración `0009`): el número grande del dashboard
   ya NO es ingresos−gastos del mes (se reiniciaba a cero cada mes). Ahora es
@@ -622,7 +642,8 @@ activa el bloqueo por el `useState(false)` inicial del gate.
   console.error para los logs de Vercel).
 - **Navegación: 4 destinos + FAB, y todo lo demás bajo "Más".** El nav es
   Inicio · Transacciones · [+] · Gráficas · **Más**. Las pantallas de
-  gestión (Presupuesto, Gastos fijos, Metas, Categorías, Perfil) vivían
+  gestión (Tarjetas, Presupuesto, Gastos fijos, Metas, Categorías, Perfil)
+  vivían
   repartidas entre el nav, tarjetas del dashboard y el perfil — con cada
   función nueva el dashboard se llenaba de tarjetas. Ahora `/more` es el
   índice único, y cada fila muestra su **estado real** ("3 de 5 pagados

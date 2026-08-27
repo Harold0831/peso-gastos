@@ -6,6 +6,7 @@ import { getHomeCurrencyForUser, requireUserId } from "./users";
 import { getLatestCachedRate } from "./exchange-rate";
 import {
   MOCK_BUDGETS,
+  MOCK_CARDS,
   MOCK_CATEGORIES,
   MOCK_GOALS,
   MOCK_RECURRING,
@@ -13,12 +14,15 @@ import {
 } from "./mock-data";
 import type {
   Budget,
+  Card,
+  CardWithSpend,
   Category,
   Currency,
   RecurringExpense,
   RecurringStatusItem,
   SavingsGoal,
   Transaction,
+  UnregisteredCard,
 } from "./types";
 
 /**
@@ -406,6 +410,79 @@ export async function getRecurringForMonth(month: Date): Promise<RecurringStatus
       ? { expense, status: "paid" as const, auto: true, matchedMerchant: match.merchant }
       : { expense, status: "pending" as const, auto: false, matchedMerchant: null };
   });
+}
+
+/** Tarjetas registradas del usuario. Vacío = la función está "apagada":
+ *  ningún filtro ni selector de tarjeta aparece en el resto de la app. */
+export async function getCards(): Promise<Card[]> {
+  if (!isSupabaseConfigured()) return MOCK_CARDS;
+  const { data, error } = await getSupabaseAdmin()
+    .from("cards")
+    .select("*")
+    .eq("user_id", await requireUserId())
+    .order("created_at");
+  if (error) throw new Error(`Error cargando tarjetas: ${error.message}`);
+  return data ?? [];
+}
+
+/**
+ * Tarjetas con su gasto del mes en moneda de casa. El vínculo con las
+ * transacciones es por `card_last4`, que los parsers ya guardaban desde
+ * siempre — por eso el desglose funciona sobre todo el historial sin
+ * backfill ni esperar movimientos nuevos.
+ */
+export async function getCardsForMonth(month: Date): Promise<CardWithSpend[]> {
+  const [cards, transactions] = await Promise.all([getCards(), getTransactions({ month })]);
+  if (cards.length === 0) return [];
+
+  const toHome = await homeConverter(transactions, await getHomeCurrency());
+  const expenses = transactions.filter((t) => t.type === "expense");
+
+  return cards.map((card) => {
+    const rows = expenses.filter((t) => t.card_last4 === card.last4);
+    return {
+      card,
+      spent: rows.reduce((sum, t) => sum + toHome(t), 0),
+      count: rows.length,
+    };
+  });
+}
+
+/**
+ * Últimos 4 dígitos que aparecen en las transacciones del usuario pero que
+ * todavía no tienen tarjeta registrada, con cuántos movimientos tiene cada
+ * uno. Alimenta el auto-descubrimiento: en vez de pedirle al usuario que
+ * teclee sus tarjetas, Peso le propone las que ya detectó en su historial.
+ */
+export async function getUnregisteredCards(): Promise<UnregisteredCard[]> {
+  const cards = await getCards();
+  const known = new Set(cards.map((c) => c.last4));
+
+  let rows: { card_last4: string | null }[];
+  if (!isSupabaseConfigured()) {
+    rows = MOCK_TRANSACTIONS.filter((t) => !t.deleted_at).map((t) => ({
+      card_last4: t.card_last4,
+    }));
+  } else {
+    const { data, error } = await getSupabaseAdmin()
+      .from("transactions")
+      .select("card_last4")
+      .eq("user_id", await requireUserId())
+      .is("deleted_at", null)
+      .not("card_last4", "is", null);
+    if (error) throw new Error(`Error detectando tarjetas: ${error.message}`);
+    rows = data ?? [];
+  }
+
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const last4 = row.card_last4;
+    if (!last4 || known.has(last4)) continue;
+    counts.set(last4, (counts.get(last4) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([last4, count]) => ({ last4, count }))
+    .sort((a, b) => b.count - a.count);
 }
 
 export interface AttentionItem {

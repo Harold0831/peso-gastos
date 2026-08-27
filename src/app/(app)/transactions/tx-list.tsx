@@ -76,11 +76,17 @@ function EmptyState({
 export function TxList({
   transactions,
   initialFilter,
+  initialCard,
   categories,
+  cards,
 }: {
   transactions: Transaction[];
   initialFilter?: string;
+  /** Últimos 4 de la tarjeta a preseleccionar (llega desde /cards). */
+  initialCard?: string;
   categories: string[];
+  /** Tarjetas registradas; vacío = no se muestra el filtro por tarjeta. */
+  cards: { last4: string; nickname: string }[];
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -100,6 +106,10 @@ export function TxList({
   // propósito: una pendiente vieja no debe esconderse por cambiar de mes.
   const [month, setMonth] = useState(() => new Date());
   const [category, setCategory] = useState<string | null>(null);
+  // Tarjeta (last4). Llega preseleccionada al entrar desde /cards.
+  const [card, setCard] = useState<string | null>(
+    initialCard && cards.some((c) => c.last4 === initialCard) ? initialCard : null,
+  );
 
   const pendingCount = transactions.filter((t) => !t.confirmed).length;
 
@@ -130,8 +140,11 @@ export function TxList({
     if (category) {
       rows = rows.filter((t) => (t.category ?? t.ai_suggested_category) === category);
     }
+    if (card) {
+      rows = rows.filter((t) => t.card_last4 === card);
+    }
     return rows;
-  }, [transactions, filter, month, category]);
+  }, [transactions, filter, month, category, card]);
 
   const groups = useMemo(() => {
     const map = new Map<string, Transaction[]>();
@@ -309,6 +322,36 @@ export function TxList({
             </button>
           ))}
         </div>
+
+        {/* Chips de tarjeta — solo si el usuario registró alguna: sin
+            tarjetas, esta fila no existe y la pantalla es idéntica a antes */}
+        {cards.length > 0 && (
+          <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-3">
+            <button
+              onClick={() => setCard(null)}
+              className={`shrink-0 rounded-pill border px-3 py-1.5 text-[11px] font-semibold transition ${
+                card === null
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-line bg-surface text-ink-muted"
+              }`}
+            >
+              Todas las tarjetas
+            </button>
+            {cards.map((c) => (
+              <button
+                key={c.last4}
+                onClick={() => setCard((current) => (current === c.last4 ? null : c.last4))}
+                className={`shrink-0 rounded-pill border px-3 py-1.5 text-[11px] font-semibold transition ${
+                  card === c.last4
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-line bg-surface text-ink-muted"
+                }`}
+              >
+                {c.nickname}
+              </button>
+            ))}
+          </div>
+        )}
 
         {filter === "pendientes" && filtered.length > 0 && (
           <div className="flex justify-end px-5 pb-3">

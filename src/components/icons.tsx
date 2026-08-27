@@ -197,3 +197,13 @@ export function UndoIcon({ className, size = 22 }: IconProps) {
     </svg>
   );
 }
+
+export function CreditCardIcon({ className, size = 22 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="2.5" y="5" width="19" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M2.5 9.5h19" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M6 15h3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}

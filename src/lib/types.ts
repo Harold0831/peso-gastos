@@ -67,6 +67,35 @@ export interface SavingsGoal {
   created_at: string;
 }
 
+/** Débito o crédito. Solo informativo: no cambia cómo se calculan el saldo
+ *  ni los presupuestos (ver migración 0012). */
+export type CardType = "debit" | "credit";
+
+/** Tarjeta del usuario. Se vincula a las transacciones por `last4`, que los
+ *  parsers de correos ya guardaban desde el inicio en `card_last4`. */
+export interface Card {
+  id: string;
+  last4: string;
+  nickname: string;
+  type: CardType;
+  color: string;
+  created_at: string;
+}
+
+/** Tarjeta con su gasto del mes, en la moneda de casa (pantalla /cards). */
+export interface CardWithSpend {
+  card: Card;
+  spent: number;
+  count: number;
+}
+
+/** Últimos 4 vistos en las transacciones que todavía no tienen tarjeta
+ *  registrada — la base del auto-descubrimiento en /cards. */
+export interface UnregisteredCard {
+  last4: string;
+  count: number;
+}
+
 /** Gasto fijo / pago recurrente (alquiler, Netflix, la luz…). Ver migración
  *  0010. Distinto de un presupuesto: es un pago concreto que se repite, no un
  *  techo por categoría. */

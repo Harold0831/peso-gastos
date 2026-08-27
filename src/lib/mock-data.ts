@@ -1,4 +1,4 @@
-import type { Budget, Category, RecurringExpense, SavingsGoal, Transaction } from "./types";
+import type { Budget, Card, Category, RecurringExpense, SavingsGoal, Transaction } from "./types";
 
 /**
  * Datos de ejemplo para desarrollo local sin Supabase configurado.
@@ -139,6 +139,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
     category: "Entretenimiento",
     currency: "USD",
     exchange_rate: 61.25,
+    card_last4: "3326",
   }),
   tx("t9", {
     merchant: "Netflix",
@@ -146,6 +147,7 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
     type: "expense",
     date: daysAgo(4, 3, 12),
     category: "Entretenimiento",
+    card_last4: "3326",
   }),
   tx("t10", {
     merchant: "Caribe Tours",
@@ -259,5 +261,19 @@ export const MOCK_RECURRING: RecurringExpense[] = [
     due_day: 1,
     active: true,
     created_at: daysAgo(90, 0, 0),
+  },
+];
+
+// Las transacciones mock usan card_last4 "4521"; registrar esa tarjeta deja
+// ver el desglose por tarjeta en modo demo. La 3326 queda sin registrar a
+// propósito, para probar el auto-descubrimiento.
+export const MOCK_CARDS: Card[] = [
+  {
+    id: "card1",
+    last4: "4521",
+    nickname: "Visa Popular",
+    type: "debit",
+    color: "#2563EB",
+    created_at: daysAgo(120, 0, 0),
   },
 ];

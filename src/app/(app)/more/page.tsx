@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { getGoals, getRecurringForMonth } from "@/lib/data";
+import { getCards, getGoals, getRecurringForMonth } from "@/lib/data";
 import {
   ChevronIcon,
+  CreditCardIcon,
   RefreshIcon,
   TagIcon,
   TargetIcon,
@@ -20,12 +21,25 @@ export const dynamic = "force-dynamic";
  */
 export default async function MorePage() {
   const now = new Date();
-  const [recurring, goals] = await Promise.all([getRecurringForMonth(now), getGoals()]);
+  const [recurring, goals, cards] = await Promise.all([
+    getRecurringForMonth(now),
+    getGoals(),
+    getCards(),
+  ]);
 
   const recurringPaid = recurring.filter((r) => r.status === "paid").length;
   const activeGoals = goals.filter((g) => g.current_amount < g.target_amount).length;
 
   const items = [
+    {
+      href: "/cards",
+      icon: CreditCardIcon,
+      label: "Tarjetas",
+      detail:
+        cards.length === 0
+          ? "Mira cuánto gastas con cada tarjeta"
+          : `${cards.length} ${cards.length === 1 ? "tarjeta" : "tarjetas"} · gasto por tarjeta`,
+    },
     {
       href: "/budget",
       icon: WalletIcon,

@@ -29,9 +29,12 @@ function currencyOptionsFor(home: Currency): Currency[] {
 
 export function NewTransactionForm({
   categories,
+  cards,
   homeCurrency,
 }: {
   categories: string[];
+  /** Tarjetas registradas; vacío = no se muestra el selector. */
+  cards: { last4: string; nickname: string }[];
   homeCurrency: Currency;
 }) {
   const router = useRouter();
@@ -61,6 +64,7 @@ export function NewTransactionForm({
   const type = watch("type");
   const category = watch("category");
   const currency = watch("currency");
+  const cardLast4 = watch("card_last4");
 
   const onSubmit = (data: TransactionInput) => {
     setServerError(null);
@@ -207,6 +211,34 @@ export function NewTransactionForm({
             <p className="mt-1 text-xs font-medium text-expense">{errors.category.message}</p>
           )}
         </div>
+
+        {/* Tarjeta — solo si el usuario registró alguna. Opcional: efectivo
+            y transferencias no llevan tarjeta y así deben quedar. */}
+        {cards.length > 0 && (
+          <div>
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-ink">
+              Tarjeta (opcional)
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {cards.map((c) => (
+                <button
+                  key={c.last4}
+                  type="button"
+                  onClick={() =>
+                    setValue("card_last4", cardLast4 === c.last4 ? undefined : c.last4)
+                  }
+                  className={`shrink-0 rounded-pill border px-3.5 py-2 text-xs font-semibold transition ${
+                    cardLast4 === c.last4
+                      ? "border-accent bg-accent text-white"
+                      : "border-line bg-surface text-ink"
+                  }`}
+                >
+                  {c.nickname}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-ink">
