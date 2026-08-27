@@ -14,10 +14,8 @@ import {
 import { markAuthenticated } from "@/lib/app-lock";
 import { SUPPORTED_BANKS } from "@/lib/banks";
 import { merchantInitials } from "@/lib/format";
-import type { Category } from "@/lib/types";
 import { useToast } from "@/components/toast";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { CategoryManager } from "./category-manager";
 
 interface ProfileClientProps {
   name: string;
@@ -33,8 +31,6 @@ interface ProfileClientProps {
   hasPasskey: boolean;
   /** true si las claves VAPID están configuradas en el servidor. */
   pushConfigured: boolean;
-  /** Categorías propias del usuario (las globales no se listan aquí). */
-  customCategories: Category[];
   demoMode?: boolean;
 }
 
@@ -52,7 +48,6 @@ export function ProfileClient({
   gmail,
   hasPasskey,
   pushConfigured,
-  customCategories,
   demoMode,
 }: ProfileClientProps) {
   const router = useRouter();
@@ -325,9 +320,6 @@ export function ProfileClient({
           {banksError && <p className="mt-2 text-xs font-medium text-expense">{banksError}</p>}
         </section>
       )}
-
-      {/* Categorías personalizadas */}
-      <CategoryManager categories={customCategories} demoMode={demoMode} />
 
       {/* Notificaciones push */}
       {pushConfigured && pushSupported && (

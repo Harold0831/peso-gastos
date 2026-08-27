@@ -149,6 +149,17 @@ export const categorySchema = z.object({
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Color inválido"),
 });
 
+/** Edición de una categoría propia (las globales no se editan). */
+export const categoryUpdateSchema = categorySchema.extend({
+  id: z.string().min(1),
+});
+
+/** Ocultar/mostrar una categoría para este usuario (migración 0011). */
+export const categoryVisibilitySchema = z.object({
+  category_id: z.string().min(1),
+  hidden: z.boolean(),
+});
+
 /** Descartes de la bandeja de notificaciones (uno o varios de un tap). */
 export const dismissNotificationsSchema = z.object({
   entries: z

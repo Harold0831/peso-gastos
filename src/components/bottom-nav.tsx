@@ -2,17 +2,23 @@
 
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
-import { ChartIcon, HomeIcon, ListIcon, PlusIcon, WalletIcon } from "./icons";
+import { ChartIcon, HomeIcon, ListIcon, MoreIcon, PlusIcon } from "./icons";
 
-// Presupuesto en el nav y Metas fuera (accesible desde la tarjeta del
-// dashboard): el presupuesto es parte del loop semanal de revisar gastos;
-// las metas se tocan esporádicamente. Lo frecuente merece el tap directo.
+// Cuatro destinos + el FAB es lo que cabe cómodo. Las pantallas de gestión
+// (Presupuesto, Gastos fijos, Metas, Categorías, Perfil) viven todas bajo
+// "Más" en vez de repartidas entre el nav y tarjetas del dashboard.
+// Presupuesto sale del nav porque además se llega a él desde la push de
+// "80% del presupuesto"; Gráficas no tiene otra puerta de entrada.
 const items = [
   { href: "/", label: "Inicio", icon: HomeIcon },
   { href: "/transactions", label: "Transacciones", icon: ListIcon },
   { href: "/charts", label: "Gráficas", icon: ChartIcon },
-  { href: "/budget", label: "Presupuesto", icon: WalletIcon },
+  { href: "/more", label: "Más", icon: MoreIcon },
 ] as const;
+
+/** Rutas que cuelgan de "Más": estando en cualquiera de ellas, esa pestaña
+ *  se marca activa (patrón estándar de la pestaña "Más"). */
+const MORE_ROUTES = ["/more", "/budget", "/goals", "/recurring", "/categories", "/profile"];
 
 /** Opacidad reducida mientras Next resuelve la navegación — feedback inmediato al tocar. */
 function NavLinkContent({
@@ -36,7 +42,11 @@ function NavLinkContent({
 export function BottomNav() {
   const pathname = usePathname();
 
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const isActive = (href: string) => {
+    if (href === "/") return pathname === "/";
+    if (href === "/more") return MORE_ROUTES.some((route) => pathname.startsWith(route));
+    return pathname.startsWith(href);
+  };
 
   const left = items.slice(0, 2);
   const right = items.slice(2);

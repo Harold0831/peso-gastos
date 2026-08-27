@@ -8,6 +8,8 @@ import {
   budgetSchema,
   bulkConfirmSchema,
   categorySchema,
+  categoryUpdateSchema,
+  categoryVisibilitySchema,
   confirmSchema,
   contributionSchema,
   dismissNotificationsSchema,
@@ -55,6 +57,14 @@ function revalidateAll() {
 function revalidateGoals() {
   revalidatePath("/goals");
   revalidatePath("/");
+}
+
+/** Categorías: su gestor vive en /categories, pero la lista alimenta los
+ *  selectores de casi toda la app (alta, detalle, presupuestos, gastos fijos). */
+function revalidateCategories() {
+  revalidateAll();
+  revalidatePath("/categories");
+  revalidatePath("/recurring");
 }
 
 /**
@@ -383,8 +393,88 @@ export async function createCategory(input: unknown): Promise<ActionResult> {
   });
   if (error) return { ok: false, error: friendlyDbError(error, "createCategory") };
 
-  revalidateAll();
-  revalidatePath("/profile");
+  revalidateCategories();
+  return { ok: true };
+}
+
+/**
+ * Edita una categoría propia (nombre, emoji, color). Las globales no se
+ * tocan: el filtro por user_id lo impide. Como al crear, rechaza chocar de
+ * nombre con otra categoría visible — excluyéndose a sí misma, para que
+ * cambiar solo el color no falle por "ya existe".
+ */
+export async function updateCategory(input: unknown): Promise<ActionResult> {
+  const parsed = categoryUpdateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const userId = await requireUserId();
+  const supabase = getSupabaseAdmin();
+
+  const { data: visible, error: readError } = await supabase
+    .from("categories")
+    .select("id, name")
+    .or(`user_id.is.null,user_id.eq.${userId}`);
+  if (readError) return { ok: false, error: friendlyDbError(readError, "updateCategory") };
+
+  const clash = (visible ?? []).some(
+    (c) => c.id !== parsed.data.id && c.name.toLowerCase() === parsed.data.name.toLowerCase(),
+  );
+  if (clash) return { ok: false, error: "Ya existe una categoría con ese nombre." };
+
+  const { data: updated, error } = await supabase
+    .from("categories")
+    .update({ name: parsed.data.name, icon: parsed.data.icon, color: parsed.data.color })
+    .eq("id", parsed.data.id)
+    .eq("user_id", userId)
+    .select("id")
+    .maybeSingle();
+  if (error) return { ok: false, error: friendlyDbError(error, "updateCategory") };
+  if (!updated) return { ok: false, error: "No puedes editar esta categoría." };
+
+  revalidateCategories();
+  return { ok: true };
+}
+
+/**
+ * Oculta o vuelve a mostrar una categoría para este usuario (migración
+ * 0011). Pensado para las globales del seed, que son compartidas entre
+ * usuarios y por eso no se pueden borrar de verdad. Ocultar solo la quita de
+ * los selectores: las transacciones que ya la usan conservan su nombre y
+ * siguen apareciendo en gráficas y presupuestos. Es reversible.
+ */
+export async function setCategoryHidden(input: unknown): Promise<ActionResult> {
+  const parsed = categoryVisibilitySchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const userId = await requireUserId();
+  const supabase = getSupabaseAdmin();
+
+  // Solo categorías del ámbito del usuario (globales o propias).
+  const { data: category } = await supabase
+    .from("categories")
+    .select("id")
+    .eq("id", parsed.data.category_id)
+    .or(`user_id.is.null,user_id.eq.${userId}`)
+    .maybeSingle();
+  if (!category) return { ok: false, error: "Esa categoría no existe." };
+
+  const { error } = parsed.data.hidden
+    ? await supabase
+        .from("hidden_categories")
+        .upsert(
+          { user_id: userId, category_id: parsed.data.category_id },
+          { onConflict: "user_id,category_id" },
+        )
+    : await supabase
+        .from("hidden_categories")
+        .delete()
+        .eq("user_id", userId)
+        .eq("category_id", parsed.data.category_id);
+  if (error) return { ok: false, error: friendlyDbError(error, "setCategoryHidden") };
+
+  revalidateCategories();
   return { ok: true };
 }
 
@@ -432,8 +522,7 @@ export async function deleteCategory(id: string): Promise<ActionResult> {
   const { error } = await supabase.from("categories").delete().eq("id", id).eq("user_id", userId);
   if (error) return { ok: false, error: friendlyDbError(error, "deleteCategory") };
 
-  revalidateAll();
-  revalidatePath("/profile");
+  revalidateCategories();
   return { ok: true };
 }
 

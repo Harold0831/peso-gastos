@@ -44,9 +44,15 @@ src/
 │   │   │   └── loading.tsx
 │   │   ├── goals/            # 6. Metas de ahorro: abonar, retirar, editar
 │   │   │   └── loading.tsx
-│   │   ├── profile/          # 7. Perfil: Gmail, Face ID, feedback, logout
+│   │   ├── recurring/        # 7. Gastos fijos: checklist mensual de pagos
 │   │   │   └── loading.tsx
-│   │   └── notifications/    # 8. Bandeja (campanita): derivada del estado,
+│   │   ├── more/             # 8. "Más" (5º tab): índice de gestión con
+│   │   │   └── loading.tsx   #    estado real de cada sección
+│   │   ├── categories/       # 9. Categorías: crear/editar propias, ocultar
+│   │   │   └── loading.tsx   #    las por defecto
+│   │   ├── profile/          # 10. Perfil: Gmail, bancos, Face ID, push
+│   │   │   └── loading.tsx
+│   │   └── notifications/    # 11. Bandeja (campanita): derivada del estado,
 │   │       └── loading.tsx   #    ver getAttentionItems() — sin tabla propia
 │   └── api/
 │       ├── auth/google/        # GET inicia OAuth; callback crea usuario+sesión
@@ -97,6 +103,7 @@ supabase/
 ├── migrations/0008_...sql   # categories.user_id (personalizadas por usuario)
 ├── migrations/0009_...sql   # users.opening_balance (saldo disponible persistente)
 ├── migrations/0010_...sql   # recurring_expenses + recurring_payments (gastos fijos)
+├── migrations/0011_...sql   # hidden_categories (ocultar las por defecto)
 └── seed.sql                 # Categorías por defecto (globales, user_id null)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
@@ -192,13 +199,24 @@ design/                      # Referencias visuales (no es código de la app)
   sugerencia de Gemini en `sync.ts`— muestra las personalizadas sin más
   cambios. El unique global sobre `name` se cambió por uno acotado al
   ámbito (`coalesce(user_id, centinela), name`) para que dos usuarios
-  puedan tener "Mascota". CRUD en el perfil ("Mis categorías",
-  `CategoryManager`) vía `createCategory`/`deleteCategory`: crear rechaza
-  nombres que choquen con una categoría visible (case-insensitive);
-  **borrar se bloquea si está en uso** — transacciones (guardan el nombre)
-  o un presupuesto (FK con cascade que se perdería) — el usuario reasigna
-  primero. Las globales nunca se editan ni se borran (el filtro por
-  `user_id` lo impide).
+  puedan tener "Mascota". CRUD en `/categories` vía `createCategory` /
+  `updateCategory` / `deleteCategory`: crear y editar rechazan nombres que
+  choquen con una categoría visible (case-insensitive; al editar se excluye
+  a sí misma, para que cambiar solo el color no falle); **borrar se bloquea
+  si está en uso** — transacciones (guardan el nombre) o un presupuesto (FK
+  con cascade que se perdería) — el usuario reasigna primero. Las globales
+  nunca se editan ni se borran (el filtro por `user_id` lo impide).
+- **Ocultar categorías por defecto** (`hidden_categories`, migración
+  `0011`): las 9 globales son compartidas entre usuarios, así que borrarlas
+  de verdad afectaría a los demás; en vez de eso cada usuario las oculta.
+  De ahí la separación en `data.ts`: **`getAllCategories()`** (globales +
+  propias, incluidas las ocultas) alimenta los REPORTES —
+  `getCategorySpend` y `getBudgetsForMonth`— para que el historial no
+  pierda su ícono, color ni su presupuesto al ocultar una categoría;
+  **`getCategories()`** resta las ocultas y es la que alimenta todo lo que
+  se ELIGE (alta manual, detalle, presupuestos nuevos, gastos fijos). El
+  sync hace su propio filtro equivalente para que Gemini no sugiera una
+  categoría oculta. Es reversible: quitar la fila la vuelve a mostrar.
 - **Saldo disponible persistente** (`users.opening_balance` +
   `opening_balance_as_of`, migración `0009`): el número grande del dashboard
   ya NO es ingresos−gastos del mes (se reiniciaba a cero cada mes). Ahora es
@@ -389,22 +407,22 @@ builder en `qik-parser.ts` — no adivines el formato.**
 Copia `.env.example` a `.env.local`. En Vercel se configuran en
 Project Settings → Environment Variables.
 
-| Variable                                  | Qué es                                                                                                 | Dónde se obtiene                    |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`                | URL del proyecto                                                                                       | Supabase → Settings → API           |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY`           | Key pública (no se usa en runtime; RLS bloquea todo)                                                   | Supabase → Settings → API           |
-| `SUPABASE_SERVICE_ROLE_KEY`               | Key de servidor — **secreta**                                                                          | Supabase → Settings → API           |
-| `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` | OAuth2 client — login con Google Y lectura de Gmail                                                    | Google Cloud Console (abajo)        |
-| `TOKEN_ENCRYPTION_KEY`                    | Cifra los refresh tokens de Gmail en la DB (AES-256-GCM)                                               | `openssl rand -base64 32`           |
-| `GMAIL_PUBSUB_TOPIC`                      | Tópico de Cloud Pub/Sub para Gmail Push                                                                | Google Cloud Console (§ Gmail Push) |
-| `GMAIL_WEBHOOK_AUDIENCE`                  | URL pública de /api/gmail-webhook, valida el JWT de Pub/Sub                                            | Tu dominio de Vercel                |
-| `GEMINI_API_KEY`                          | API key de Gemini                                                                                      | https://aistudio.google.com/apikey  |
-| `SYNC_SECRET`                             | Protege /api/sync (llamadas externas manuales)                                                         | `openssl rand -hex 32`              |
-| `ADMIN_SECRET`                            | Protege /api/admin/mint-token (genera el token de API de un usuario para el Shortcut de iOS)           | `openssl rand -hex 32`              |
-| `CRON_SECRET`                             | Protege /api/gmail-watch/renew — **debe llamarse así**, Vercel lo inyecta automáticamente en sus crons | `openssl rand -hex 32`              |
-| `SESSION_SECRET`                          | Firma la cookie JWT de sesión                                                                          | `openssl rand -base64 32`           |
-| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push (opcional): sin ellas la sección "Notificaciones" del perfil no aparece y nada más cambia | `npx web-push generate-vapid-keys`  |
-| `VAPID_CONTACT_EMAIL`                     | Contacto que los servicios de push pueden usar si hay un problema con tus envíos (opcional; default placeholder) | Tu email                            |
+| Variable                                             | Qué es                                                                                                           | Dónde se obtiene                    |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`                           | URL del proyecto                                                                                                 | Supabase → Settings → API           |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY`                      | Key pública (no se usa en runtime; RLS bloquea todo)                                                             | Supabase → Settings → API           |
+| `SUPABASE_SERVICE_ROLE_KEY`                          | Key de servidor — **secreta**                                                                                    | Supabase → Settings → API           |
+| `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`            | OAuth2 client — login con Google Y lectura de Gmail                                                              | Google Cloud Console (abajo)        |
+| `TOKEN_ENCRYPTION_KEY`                               | Cifra los refresh tokens de Gmail en la DB (AES-256-GCM)                                                         | `openssl rand -base64 32`           |
+| `GMAIL_PUBSUB_TOPIC`                                 | Tópico de Cloud Pub/Sub para Gmail Push                                                                          | Google Cloud Console (§ Gmail Push) |
+| `GMAIL_WEBHOOK_AUDIENCE`                             | URL pública de /api/gmail-webhook, valida el JWT de Pub/Sub                                                      | Tu dominio de Vercel                |
+| `GEMINI_API_KEY`                                     | API key de Gemini                                                                                                | https://aistudio.google.com/apikey  |
+| `SYNC_SECRET`                                        | Protege /api/sync (llamadas externas manuales)                                                                   | `openssl rand -hex 32`              |
+| `ADMIN_SECRET`                                       | Protege /api/admin/mint-token (genera el token de API de un usuario para el Shortcut de iOS)                     | `openssl rand -hex 32`              |
+| `CRON_SECRET`                                        | Protege /api/gmail-watch/renew — **debe llamarse así**, Vercel lo inyecta automáticamente en sus crons           | `openssl rand -hex 32`              |
+| `SESSION_SECRET`                                     | Firma la cookie JWT de sesión                                                                                    | `openssl rand -base64 32`           |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push (opcional): sin ellas la sección "Notificaciones" del perfil no aparece y nada más cambia               | `npx web-push generate-vapid-keys`  |
+| `VAPID_CONTACT_EMAIL`                                | Contacto que los servicios de push pueden usar si hay un problema con tus envíos (opcional; default placeholder) | Tu email                            |
 
 ## Configurar Google (login + Gmail multi-usuario)
 
@@ -592,10 +610,21 @@ activa el bloqueo por el `useState(false)` inicial del gate.
   (vincular Gmail, Face ID) son descartables con memoria (`Dismissible`,
   localStorage); el de "reconectar Gmail" NO es descartable a propósito
   (es una rotura real del sync). Estados vacíos siempre con acción (CTA o
-  celebración), nunca un callejón sin salida. En el nav va Presupuesto
-  (uso semanal) y Metas quedó como tarjeta del dashboard (uso esporádico).
-  Errores de Supabase pasan por `friendlyDbError()` (mensaje humano en
-  español; el crudo va a console.error para los logs de Vercel).
+  celebración), nunca un callejón sin salida. Errores de Supabase pasan por
+  `friendlyDbError()` (mensaje humano en español; el crudo va a
+  console.error para los logs de Vercel).
+- **Navegación: 4 destinos + FAB, y todo lo demás bajo "Más".** El nav es
+  Inicio · Transacciones · [+] · Gráficas · **Más**. Las pantallas de
+  gestión (Presupuesto, Gastos fijos, Metas, Categorías, Perfil) vivían
+  repartidas entre el nav, tarjetas del dashboard y el perfil — con cada
+  función nueva el dashboard se llenaba de tarjetas. Ahora `/more` es el
+  índice único, y cada fila muestra su **estado real** ("3 de 5 pagados
+  este mes") para que informe y no sea solo un menú. Presupuesto salió del
+  nav porque además se llega desde la push de "80% del presupuesto";
+  Gráficas se queda porque no tiene otra puerta de entrada. `MORE_ROUTES`
+  en `BottomNav` marca la pestaña activa estando en cualquier hija. Como
+  consecuencia el dashboard quedó en lo de un vistazo: saldo, movimientos
+  del mes y recientes.
 - **`loading.tsx` por ruta en vez de spinners manuales.** Next.js App
   Router activa el archivo `loading.tsx` de cada segmento automáticamente
   vía Suspense mientras el server component espera datos — no hay que
