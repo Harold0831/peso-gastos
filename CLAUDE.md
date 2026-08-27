@@ -48,8 +48,8 @@ src/
 │   │   │   └── loading.tsx
 │   │   ├── more/             # 8. "Más" (5º tab): índice de gestión con
 │   │   │   └── loading.tsx   #    estado real de cada sección
-│   │   ├── categories/       # 9. Categorías: crear/editar propias, ocultar
-│   │   │   └── loading.tsx   #    las por defecto
+│   │   ├── categories/       # 9. Categorías: crear/editar propias, eliminar
+│   │   │   └── loading.tsx   #    las por defecto (+ restablecerlas)
 │   │   ├── profile/          # 10. Perfil: Gmail, bancos, Face ID, push
 │   │   │   └── loading.tsx
 │   │   └── notifications/    # 11. Bandeja (campanita): derivada del estado,
@@ -206,17 +206,24 @@ design/                      # Referencias visuales (no es código de la app)
   si está en uso** — transacciones (guardan el nombre) o un presupuesto (FK
   con cascade que se perdería) — el usuario reasigna primero. Las globales
   nunca se editan ni se borran (el filtro por `user_id` lo impide).
-- **Ocultar categorías por defecto** (`hidden_categories`, migración
-  `0011`): las 9 globales son compartidas entre usuarios, así que borrarlas
-  de verdad afectaría a los demás; en vez de eso cada usuario las oculta.
-  De ahí la separación en `data.ts`: **`getAllCategories()`** (globales +
-  propias, incluidas las ocultas) alimenta los REPORTES —
-  `getCategorySpend` y `getBudgetsForMonth`— para que el historial no
-  pierda su ícono, color ni su presupuesto al ocultar una categoría;
-  **`getCategories()`** resta las ocultas y es la que alimenta todo lo que
-  se ELIGE (alta manual, detalle, presupuestos nuevos, gastos fijos). El
-  sync hace su propio filtro equivalente para que Gemini no sugiera una
-  categoría oculta. Es reversible: quitar la fila la vuelve a mostrar.
+- **Eliminar categorías por defecto** (`hidden_categories`, migración
+  `0011`): en la UI se llama **Eliminar** y la categoría desaparece de la
+  lista — es lo que el usuario espera y evita dejar filas grises ocupando
+  espacio. Por dentro NO se borra: las 9 globales son compartidas entre
+  usuarios y borrarlas de verdad afectaría a los demás, así que solo se
+  ocultan para ese usuario (`setCategoryHidden`). De ahí la separación en
+  `data.ts`: **`getAllCategories()`** (globales + propias, incluidas las
+  ocultas) alimenta los REPORTES —`getCategorySpend` y
+  `getBudgetsForMonth`— para que el historial no pierda su ícono, color ni
+  su presupuesto; **`getCategories()`** resta las ocultas y alimenta todo
+  lo que se ELIGE (alta manual, detalle, presupuestos nuevos, gastos
+  fijos). El sync hace su propio filtro equivalente para que Gemini no
+  sugiera una categoría eliminada. Como las eliminadas ya no se listan, la
+  vía de vuelta es **`restoreDefaultCategories()`** ("Restablecer N
+  eliminadas", visible solo si hay algo que restablecer). `setCategoryHidden`
+  **no deja quitar la última categoría visible**: el alta de transacciones
+  exige elegir una y quedarse en cero sería un callejón sin salida (mismo
+  criterio que "Mis bancos").
 - **Saldo disponible persistente** (`users.opening_balance` +
   `opening_balance_as_of`, migración `0009`): el número grande del dashboard
   ya NO es ingresos−gastos del mes (se reiniciaba a cero cada mes). Ahora es

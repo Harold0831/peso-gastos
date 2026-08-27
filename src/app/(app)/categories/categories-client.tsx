@@ -3,10 +3,16 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Category } from "@/lib/types";
-import { createCategory, deleteCategory, setCategoryHidden, updateCategory } from "@/lib/actions";
+import {
+  createCategory,
+  deleteCategory,
+  restoreDefaultCategories,
+  setCategoryHidden,
+  updateCategory,
+} from "@/lib/actions";
 import { useToast } from "@/components/toast";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { EyeIcon, EyeOffIcon, PencilIcon, TrashIcon } from "@/components/icons";
+import { PencilIcon, TrashIcon, UndoIcon } from "@/components/icons";
 
 /** Emojis sugeridos para arrancar rápido; igual se puede teclear cualquiera. */
 const EMOJI_PRESETS = ["🐶", "🏋️", "☕", "🎁", "✈️", "🍔", "💅", "🎮", "🏠", "👶", "💰", "🎓"];
@@ -36,6 +42,10 @@ export function CategoriesClient({
   demoMode?: boolean;
 }) {
   const hidden = new Set(hiddenIds);
+  // Las quitadas no se listan: el usuario las "eliminó" y no deben seguir
+  // ocupando espacio. Vuelven con "Restablecer".
+  const visibleGlobals = globals.filter((c) => !hidden.has(c.id));
+  const removedCount = globals.length - visibleGlobals.length;
   // null = sin formulario; "new" = alta; una categoría = edición
   const [form, setForm] = useState<"new" | Category | null>(null);
 
@@ -44,7 +54,7 @@ export function CategoriesClient({
       <div className="px-5 py-4">
         <h1 className="text-[28px] font-extrabold tracking-tight text-ink">Categorías</h1>
         <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
-          Crea las tuyas y oculta las que no uses. Aparecen al registrar gastos, en presupuestos y
+          Crea las tuyas y elimina las que no uses. Aparecen al registrar gastos, en presupuestos y
           en las gráficas.
         </p>
       </div>
@@ -98,60 +108,69 @@ export function CategoriesClient({
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
           Por defecto
         </h2>
-        <ul className="overflow-hidden rounded-card border border-line bg-card">
-          {globals.map((cat, i) => (
-            <GlobalRow
-              key={cat.id}
-              category={cat}
-              isHidden={hidden.has(cat.id)}
-              divider={i < globals.length - 1}
-              demoMode={demoMode}
-            />
-          ))}
-        </ul>
+        {visibleGlobals.length === 0 ? (
+          <p className="rounded-card border border-dashed border-line px-4 py-5 text-center text-[13px] text-ink-muted">
+            Quitaste todas las categorías por defecto.
+          </p>
+        ) : (
+          <ul className="overflow-hidden rounded-card border border-line bg-card">
+            {visibleGlobals.map((cat, i) => (
+              <GlobalRow
+                key={cat.id}
+                category={cat}
+                divider={i < visibleGlobals.length - 1}
+                demoMode={demoMode}
+              />
+            ))}
+          </ul>
+        )}
+
+        {removedCount > 0 && <RestoreDefaults count={removedCount} demoMode={demoMode} />}
+
         <p className="mt-2 px-1 text-[11px] leading-relaxed text-ink-muted">
-          Las categorías por defecto son compartidas, así que no se borran: al ocultarlas dejan de
-          ofrecerse al registrar gastos, pero tus transacciones y gráficas de siempre no cambian.
+          Al eliminar una categoría por defecto deja de ofrecerse al registrar gastos. Tus
+          transacciones y gráficas de siempre no cambian, y puedes restablecerla cuando quieras.
         </p>
       </section>
     </main>
   );
 }
 
-/** Fila de categoría global: solo se puede ocultar/mostrar. */
+/**
+ * Fila de categoría por defecto. Se presenta como "Eliminar" (es lo que el
+ * usuario quiere: que no ocupe espacio en su lista); por dentro solo se
+ * oculta, ver setCategoryHidden.
+ */
 function GlobalRow({
   category,
-  isHidden,
   divider,
   demoMode,
 }: {
   category: Category;
-  isHidden: boolean;
   divider: boolean;
   demoMode?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [busy, startBusy] = useTransition();
+  const [confirming, setConfirming] = useState(false);
 
-  const toggle = () => {
+  const remove = () => {
     startBusy(async () => {
-      const result = await setCategoryHidden({ category_id: category.id, hidden: !isHidden });
+      const result = await setCategoryHidden({ category_id: category.id, hidden: true });
       if (!result.ok) {
-        toast(result.error ?? "No se pudo guardar", "error");
+        toast(result.error ?? "No se pudo eliminar", "error");
+        setConfirming(false);
         return;
       }
-      toast(isHidden ? `${category.name} vuelve a estar visible` : `${category.name} oculta`);
+      toast("Categoría eliminada");
+      setConfirming(false);
       router.refresh();
     });
   };
 
   return (
-    <li
-      className={`flex items-center gap-3 px-4 py-3 ${divider ? "border-b border-line" : ""} ${
-        isHidden ? "opacity-45" : ""
-      }`}
-    >
+    <li className={`flex items-center gap-3 px-4 py-3 ${divider ? "border-b border-line" : ""}`}>
       <span
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill text-base"
         style={{ backgroundColor: `${category.color}1A` }}
@@ -160,19 +179,61 @@ function GlobalRow({
       </span>
       <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">
         {category.name}
-        {isHidden && <span className="ml-2 text-[11px] font-medium text-ink-muted">Oculta</span>}
       </span>
       <button
         type="button"
-        onClick={toggle}
+        onClick={() => setConfirming(true)}
         disabled={busy || demoMode}
-        aria-pressed={isHidden}
-        aria-label={isHidden ? `Mostrar ${category.name}` : `Ocultar ${category.name}`}
+        aria-label={`Eliminar ${category.name}`}
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill text-ink-muted transition active:bg-background disabled:opacity-50"
       >
-        {isHidden ? <EyeOffIcon size={19} /> : <EyeIcon size={19} />}
+        <TrashIcon size={19} />
       </button>
+
+      <ConfirmDialog
+        open={confirming}
+        title={`¿Eliminar "${category.name}"?`}
+        description="Dejará de aparecer al registrar gastos. Tus transacciones y gráficas no cambian, y puedes restablecerla cuando quieras."
+        confirmLabel="Eliminar"
+        pending={busy}
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
     </li>
+  );
+}
+
+/** Vía de vuelta: como las eliminadas ya no se listan, sin esto no habría
+ *  forma de recuperarlas. Solo aparece si hay algo que restablecer. */
+function RestoreDefaults({ count, demoMode }: { count: number; demoMode?: boolean }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [busy, startBusy] = useTransition();
+
+  const restore = () => {
+    startBusy(async () => {
+      const result = await restoreDefaultCategories();
+      if (!result.ok) {
+        toast(result.error ?? "No se pudo restablecer", "error");
+        return;
+      }
+      toast("✓ Categorías restablecidas");
+      router.refresh();
+    });
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={restore}
+      disabled={busy || demoMode}
+      className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-btn border border-line py-3 text-[13px] font-semibold text-accent disabled:opacity-50"
+    >
+      <UndoIcon size={17} />
+      {busy
+        ? "Restableciendo…"
+        : `Restablecer ${count} ${count === 1 ? "eliminada" : "eliminadas"}`}
+    </button>
   );
 }
 

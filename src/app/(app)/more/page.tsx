@@ -58,7 +58,7 @@ export default async function MorePage() {
       href: "/categories",
       icon: TagIcon,
       label: "Categorías",
-      detail: "Crea las tuyas y oculta las que no usas",
+      detail: "Crea las tuyas y elimina las que no usas",
     },
     {
       href: "/profile",
