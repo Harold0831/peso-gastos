@@ -437,11 +437,13 @@ export async function updateCategory(input: unknown): Promise<ActionResult> {
 }
 
 /**
- * Oculta o vuelve a mostrar una categoría para este usuario (migración
- * 0011). Pensado para las globales del seed, que son compartidas entre
- * usuarios y por eso no se pueden borrar de verdad. Ocultar solo la quita de
- * los selectores: las transacciones que ya la usan conservan su nombre y
- * siguen apareciendo en gráficas y presupuestos. Es reversible.
+ * Quita (o devuelve) una categoría por defecto de la lista del usuario
+ * (migración 0011). En la UI se presenta como "Eliminar" porque es lo que
+ * el usuario quiere: que deje de ocupar espacio en su lista. Por dentro
+ * solo se oculta, porque las globales del seed son compartidas entre
+ * usuarios y borrarlas de verdad afectaría a los demás — con la ventaja de
+ * que el historial que ya las usa conserva nombre, ícono y color, y de que
+ * se puede restablecer.
  */
 export async function setCategoryHidden(input: unknown): Promise<ActionResult> {
   const parsed = categoryVisibilitySchema.safeParse(input);
@@ -460,6 +462,25 @@ export async function setCategoryHidden(input: unknown): Promise<ActionResult> {
     .maybeSingle();
   if (!category) return { ok: false, error: "Esa categoría no existe." };
 
+  // Quedarse sin ninguna categoría es un callejón sin salida: el alta de
+  // transacciones exige elegir una. Mismo criterio que "Mis bancos", que
+  // tampoco deja desmarcarlos todos.
+  if (parsed.data.hidden) {
+    const [{ data: scope }, { data: hiddenRows }] = await Promise.all([
+      supabase.from("categories").select("id").or(`user_id.is.null,user_id.eq.${userId}`),
+      supabase.from("hidden_categories").select("category_id").eq("user_id", userId),
+    ]);
+    const hiddenAfter = new Set((hiddenRows ?? []).map((h) => h.category_id as string));
+    hiddenAfter.add(parsed.data.category_id);
+    const remaining = (scope ?? []).filter((c) => !hiddenAfter.has(c.id)).length;
+    if (remaining === 0) {
+      return {
+        ok: false,
+        error: "Deja al menos una categoría: la necesitas para registrar gastos.",
+      };
+    }
+  }
+
   const { error } = parsed.data.hidden
     ? await supabase
         .from("hidden_categories")
@@ -473,6 +494,24 @@ export async function setCategoryHidden(input: unknown): Promise<ActionResult> {
         .eq("user_id", userId)
         .eq("category_id", parsed.data.category_id);
   if (error) return { ok: false, error: friendlyDbError(error, "setCategoryHidden") };
+
+  revalidateCategories();
+  return { ok: true };
+}
+
+/**
+ * Devuelve TODAS las categorías por defecto que el usuario había quitado.
+ * Es la vía de vuelta de `setCategoryHidden`: como las quitadas ya no se
+ * listan (para no ocupar espacio), sin esto no habría forma de recuperarlas.
+ */
+export async function restoreDefaultCategories(): Promise<ActionResult> {
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("hidden_categories")
+    .delete()
+    .eq("user_id", await requireUserId());
+  if (error) return { ok: false, error: friendlyDbError(error, "restoreDefaultCategories") };
 
   revalidateCategories();
   return { ok: true };
