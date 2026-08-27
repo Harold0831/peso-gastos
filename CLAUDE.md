@@ -42,7 +42,7 @@ src/
 │   │   │   └── loading.tsx
 │   │   ├── budget/           # 5. Presupuestos por categoría
 │   │   │   └── loading.tsx
-│   │   ├── goals/            # 6. Metas de ahorro con abonos
+│   │   ├── goals/            # 6. Metas de ahorro: abonar, retirar, editar
 │   │   │   └── loading.tsx
 │   │   ├── profile/          # 7. Perfil: Gmail, Face ID, feedback, logout
 │   │   │   └── loading.tsx
@@ -222,6 +222,19 @@ design/                      # Referencias visuales (no es código de la app)
   equivocado. Pantalla `/recurring` + tarjeta en el dashboard ("N/M pagados
   este mes"). CRUD vía `createRecurringExpense`/`deleteRecurringExpense`;
   borrar no toca transacciones.
+- **Metas: abonar, retirar y editar.** Al principio solo existía "Abonar"
+  (sumar), lo que dejaba callejones sin salida: si el usuario gastaba parte
+  de lo ahorrado no podía reflejarlo, y una meta ya completada se quedaba
+  sin ninguna acción posible (ni siquiera borrarla). Hoy hay tres
+  mutaciones más: `withdrawFromGoal` (resta, nunca por debajo de 0 —
+  valida contra el ahorro real en el servidor), `updateGoal` (nombre,
+  ícono, objetivo, fecha y **`current_amount`**, que admite 0 vía
+  `nonNegativeAmountField`) y `deleteGoal` (borrado real: una meta no
+  reaparece desde Gmail, así que no necesita soft delete). En la tarjeta:
+  "+ Abonar" solo si falta para el objetivo, "− Retirar" solo si hay algo
+  ahorrado, y ✏️ siempre. Todas revalidan `/goals` **y** `/` con
+  `revalidateGoals()` — el dashboard muestra el conteo de metas activas y
+  se quedaba desactualizado.
 - **Confirmación en lote** (`confirmTransactionsBulk`): en /transactions,
   filtro "Por confirmar" → "Seleccionar varias" activa checkboxes en
   `TxRow` (prop `selectable`). Si 2+ pendientes comparten la misma

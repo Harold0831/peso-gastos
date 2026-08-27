@@ -23,6 +23,11 @@ function normalizeAmount(v: unknown): unknown {
 /** Monto monetario positivo, tolerante a coma decimal. */
 const amountField = (msg: string) => z.preprocess(normalizeAmount, z.number().positive(msg));
 
+/** Monto monetario que SÍ admite cero (p. ej. dejar una meta en 0 ahorrado
+ *  tras retirar todo). Sigue rechazando negativos. */
+const nonNegativeAmountField = (msg: string) =>
+  z.preprocess(normalizeAmount, z.number().min(0, msg));
+
 export const transactionSchema = z.object({
   type: z.enum(["expense", "income"]),
   merchant: z.string().trim().min(1, "Escribe el nombre del comercio"),
@@ -68,6 +73,26 @@ export const goalSchema = z.object({
 export const contributionSchema = z.object({
   goal_id: z.string().min(1),
   amount: amountField("El abono debe ser mayor que 0"),
+});
+
+/** Edición completa de una meta. `current_amount` admite 0: si el usuario
+ *  gastó lo que tenía ahorrado, debe poder dejar la meta en cero — antes solo
+ *  se podía sumar con "Abonar", un callejón sin salida. */
+export const goalUpdateSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1, "Escribe el nombre de la meta"),
+  target_amount: amountField("El monto objetivo debe ser mayor que 0"),
+  current_amount: nonNegativeAmountField("Lo ahorrado no puede ser negativo"),
+  deadline: z.string().optional(),
+  icon: z.string().trim().min(1).max(4).default("🎯"),
+});
+
+/** Retiro de una meta (el caso natural: "saqué 5,000 de lo ahorrado"). El
+ *  tope contra lo realmente ahorrado se valida en la action, que es quien
+ *  conoce el saldo actual. */
+export const goalWithdrawSchema = z.object({
+  goal_id: z.string().min(1),
+  amount: amountField("El retiro debe ser mayor que 0"),
 });
 
 /** Bancos a sincronizar (perfil → "Mis bancos"). Vacío no es válido:
