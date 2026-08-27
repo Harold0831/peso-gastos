@@ -15,7 +15,16 @@ function toLocalInput(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: string[] }) {
+export function ConfirmForm({
+  tx,
+  categories,
+  cardName,
+}: {
+  tx: Transaction;
+  categories: string[];
+  /** Nombre de la tarjeta si el usuario la registró; si no, null. */
+  cardName?: string | null;
+}) {
   const router = useRouter();
   const toast = useToast();
   const suggested = tx.category ?? tx.ai_suggested_category;
@@ -209,7 +218,14 @@ export function ConfirmForm({ tx, categories }: { tx: Transaction; categories: s
               ["Comercio", tx.merchant],
               ["Fecha", formatFullDate(date)],
               ["Hora", formatTime(date)],
-              ["Tarjeta", tx.card_last4 ? `•••• ${tx.card_last4}` : "—"],
+              [
+                "Tarjeta",
+                tx.card_last4
+                  ? cardName
+                    ? `${cardName} · •••• ${tx.card_last4}`
+                    : `•••• ${tx.card_last4}`
+                  : "—",
+              ],
               [
                 "Origen",
                 tx.source === "email"

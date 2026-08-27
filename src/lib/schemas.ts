@@ -36,6 +36,13 @@ export const transactionSchema = z.object({
   date: z.string().min(1, "Selecciona la fecha"),
   category: z.string().trim().min(1, "Selecciona una categoría"),
   notes: z.string().trim().optional(),
+  // Tarjeta usada (opcional). Se guarda como card_last4, el mismo campo que
+  // llenan los parsers de correos, para que agrupe igual que las importadas.
+  card_last4: z
+    .string()
+    .trim()
+    .regex(/^\d{4}$/, "Tarjeta inválida")
+    .optional(),
 });
 
 export type TransactionInput = z.infer<typeof transactionSchema>;
@@ -151,6 +158,26 @@ export const categorySchema = z.object({
 
 /** Edición de una categoría propia (las globales no se editan). */
 export const categoryUpdateSchema = categorySchema.extend({
+  id: z.string().min(1),
+});
+
+/** Alta de tarjeta. `last4` es la clave que la vincula con las
+ *  transacciones ya guardadas, así que no se edita después. */
+export const cardSchema = z.object({
+  last4: z
+    .string()
+    .trim()
+    .regex(/^\d{4}$/, "Deben ser los últimos 4 dígitos"),
+  nickname: z.string().trim().min(1, "Ponle un nombre").max(30, "Máximo 30 caracteres"),
+  type: z.enum(["debit", "credit"]).default("debit"),
+  color: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/, "Color inválido")
+    .default("#2563EB"),
+});
+
+/** Edición de tarjeta: todo menos `last4`. */
+export const cardUpdateSchema = cardSchema.omit({ last4: true }).extend({
   id: z.string().min(1),
 });
 

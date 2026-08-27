@@ -7,6 +7,8 @@ import { requireUserId } from "./users";
 import {
   budgetSchema,
   bulkConfirmSchema,
+  cardSchema,
+  cardUpdateSchema,
   categorySchema,
   categoryUpdateSchema,
   categoryVisibilitySchema,
@@ -238,6 +240,7 @@ export async function createTransaction(input: unknown): Promise<ActionResult> {
       date: new Date(parsed.data.date).toISOString(),
       category: parsed.data.category,
       notes: parsed.data.notes || null,
+      card_last4: parsed.data.card_last4 ?? null,
       confirmed: true,
       source: "manual",
     })
@@ -341,6 +344,88 @@ export async function setRecurringPaid(input: unknown): Promise<ActionResult> {
 
   revalidatePath("/");
   revalidatePath("/recurring");
+  return { ok: true };
+}
+
+/** Todo lo que cambia al tocar una tarjeta: su pantalla, el menú y las
+ *  vistas donde se filtra o elige tarjeta. */
+function revalidateCards() {
+  revalidatePath("/cards");
+  revalidatePath("/more");
+  revalidatePath("/transactions");
+}
+
+/**
+ * Registra una tarjeta poniéndole nombre a unos últimos 4 dígitos. No toca
+ * las transacciones: como el vínculo es por `last4` (que los parsers ya
+ * guardaban), al crearla quedan agrupados de inmediato todos los
+ * movimientos históricos de esa tarjeta.
+ */
+export async function createCard(input: unknown): Promise<ActionResult> {
+  const parsed = cardSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("cards")
+    .insert({
+      user_id: await requireUserId(),
+      last4: parsed.data.last4,
+      nickname: parsed.data.nickname,
+      type: parsed.data.type,
+      color: parsed.data.color,
+    });
+  if (error) {
+    // 23505 = unique (user_id, last4): ya tiene una tarjeta con ese final
+    if (error.code === "23505") {
+      return { ok: false, error: `Ya tienes una tarjeta terminada en ${parsed.data.last4}.` };
+    }
+    return { ok: false, error: friendlyDbError(error, "createCard") };
+  }
+
+  revalidateCards();
+  return { ok: true };
+}
+
+/** Edita el nombre, tipo o color de una tarjeta. `last4` no se toca: es lo
+ *  que la vincula con las transacciones ya guardadas. */
+export async function updateCard(input: unknown): Promise<ActionResult> {
+  const parsed = cardUpdateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { data: updated, error } = await getSupabaseAdmin()
+    .from("cards")
+    .update({
+      nickname: parsed.data.nickname,
+      type: parsed.data.type,
+      color: parsed.data.color,
+    })
+    .eq("id", parsed.data.id)
+    .eq("user_id", await requireUserId())
+    .select("id")
+    .maybeSingle();
+  if (error) return { ok: false, error: friendlyDbError(error, "updateCard") };
+  if (!updated) return { ok: false, error: "Esa tarjeta no existe." };
+
+  revalidateCards();
+  return { ok: true };
+}
+
+/** Quita una tarjeta. Solo borra la etiqueta: las transacciones conservan
+ *  su `card_last4` y vuelven a aparecer como "sin registrar". */
+export async function deleteCard(id: string): Promise<ActionResult> {
+  if (!id) return { ok: false, error: "Falta el id de la tarjeta" };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("cards")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", await requireUserId());
+  if (error) return { ok: false, error: friendlyDbError(error, "deleteCard") };
+
+  revalidateCards();
   return { ok: true };
 }
 

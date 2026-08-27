@@ -1,0 +1,26 @@
+import { Skeleton } from "@/components/skeleton";
+
+export default function CardsLoading() {
+  return (
+    <main className="pt-safe">
+      <div className="px-5 py-4">
+        <Skeleton className="h-8 w-32" />
+        <Skeleton className="mt-2 h-3 w-56" />
+      </div>
+      <div className="mx-5 flex flex-col gap-2.5">
+        {[0, 1].map((i) => (
+          <div key={i} className="rounded-card border border-line bg-card p-4">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-9 w-9 rounded-pill" />
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Skeleton className="h-3.5 w-28" />
+                <Skeleton className="h-2.5 w-36" />
+              </div>
+              <Skeleton className="h-3.5 w-20" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </main>
+  );
+}
