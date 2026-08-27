@@ -13,6 +13,8 @@ import {
   dismissNotificationsSchema,
   enabledBanksSchema,
   goalSchema,
+  goalUpdateSchema,
+  goalWithdrawSchema,
   openingBalanceSchema,
   pushSubscriptionSchema,
   recurringExpenseSchema,
@@ -46,6 +48,13 @@ function revalidateAll() {
   for (const path of ["/", "/transactions", "/charts", "/budget", "/goals"]) {
     revalidatePath(path);
   }
+}
+
+/** Metas: además de su pantalla, el dashboard muestra cuántas están activas
+ *  — sin esto, crear/editar/eliminar dejaba ese conteo desactualizado. */
+function revalidateGoals() {
+  revalidatePath("/goals");
+  revalidatePath("/");
 }
 
 /**
@@ -507,7 +516,7 @@ export async function createGoal(input: unknown): Promise<ActionResult> {
     });
   if (error) return { ok: false, error: friendlyDbError(error, "createGoal") };
 
-  revalidatePath("/goals");
+  revalidateGoals();
   return { ok: true };
 }
 
@@ -533,7 +542,87 @@ export async function contributeToGoal(input: unknown): Promise<ActionResult> {
     .eq("user_id", userId);
   if (error) return { ok: false, error: friendlyDbError(error, "contributeToGoal") };
 
-  revalidatePath("/goals");
+  revalidateGoals();
+  return { ok: true };
+}
+
+/**
+ * Retira dinero de una meta ("saqué 5,000 de lo ahorrado"). Sin esto la
+ * única operación era sumar con "Abonar": quien gastaba parte de sus ahorros
+ * no tenía forma de reflejarlo. No permite retirar más de lo ahorrado —
+ * dejaría la meta en negativo, que no significa nada.
+ */
+export async function withdrawFromGoal(input: unknown): Promise<ActionResult> {
+  const parsed = goalWithdrawSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const supabase = getSupabaseAdmin();
+  const userId = await requireUserId();
+  const { data: goal, error: readError } = await supabase
+    .from("savings_goals")
+    .select("current_amount")
+    .eq("id", parsed.data.goal_id)
+    .eq("user_id", userId)
+    .single();
+  if (readError) return { ok: false, error: friendlyDbError(readError, "withdrawFromGoal") };
+
+  const saved = Number(goal.current_amount);
+  if (parsed.data.amount > saved) {
+    return { ok: false, error: "No puedes retirar más de lo que tienes ahorrado en esta meta." };
+  }
+
+  const { error } = await supabase
+    .from("savings_goals")
+    .update({ current_amount: saved - parsed.data.amount })
+    .eq("id", parsed.data.goal_id)
+    .eq("user_id", userId);
+  if (error) return { ok: false, error: friendlyDbError(error, "withdrawFromGoal") };
+
+  revalidateGoals();
+  return { ok: true };
+}
+
+/**
+ * Edición completa de una meta, incluido el monto ya ahorrado (para
+ * corregirlo de un tirón en vez de abonar/retirar la diferencia).
+ */
+export async function updateGoal(input: unknown): Promise<ActionResult> {
+  const parsed = goalUpdateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("savings_goals")
+    .update({
+      name: parsed.data.name,
+      target_amount: parsed.data.target_amount,
+      current_amount: parsed.data.current_amount,
+      deadline: parsed.data.deadline || null,
+      icon: parsed.data.icon,
+    })
+    .eq("id", parsed.data.id)
+    .eq("user_id", await requireUserId());
+  if (error) return { ok: false, error: friendlyDbError(error, "updateGoal") };
+
+  revalidateGoals();
+  return { ok: true };
+}
+
+/** Elimina una meta. Borrado real: a diferencia de las transacciones, una
+ *  meta no vuelve sola desde Gmail, así que no hace falta soft delete. */
+export async function deleteGoal(id: string): Promise<ActionResult> {
+  if (!id) return { ok: false, error: "Falta el id de la meta" };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("savings_goals")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", await requireUserId());
+  if (error) return { ok: false, error: friendlyDbError(error, "deleteGoal") };
+
+  revalidateGoals();
   return { ok: true };
 }
 
