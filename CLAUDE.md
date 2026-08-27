@@ -622,9 +622,12 @@ activa el bloqueo por el `useState(false)` inicial del gate.
   este mes") para que informe y no sea solo un menú. Presupuesto salió del
   nav porque además se llega desde la push de "80% del presupuesto";
   Gráficas se queda porque no tiene otra puerta de entrada. `MORE_ROUTES`
-  en `BottomNav` marca la pestaña activa estando en cualquier hija. Como
-  consecuencia el dashboard quedó en lo de un vistazo: saldo, movimientos
-  del mes y recientes.
+  en `BottomNav` marca la pestaña activa estando en cualquier hija. El
+  dashboard conserva sus dos tiles compactos (Gastos fijos y Metas) **a
+  propósito**, duplicando dos filas de "Más": el menú es el índice
+  completo, el tile es el vistazo de un segundo ("3/5 pagados") sin
+  navegar. Lo que sí se quitó del dashboard fue la tarjeta de "N por
+  confirmar", que ya vive en la campanita.
 - **`loading.tsx` por ruta en vez de spinners manuales.** Next.js App
   Router activa el archivo `loading.tsx` de cada segmento automáticamente
   vía Suspense mientras el server component espera datos — no hay que
