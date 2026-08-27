@@ -3,10 +3,8 @@ import { subMonths } from "date-fns";
 import {
   getAttentionItems,
   getAvailableBalance,
-  getGoals,
   getHomeCurrency,
   getMonthSummary,
-  getRecurringForMonth,
   getTransactions,
 } from "@/lib/data";
 import { currencySymbol, formatMoney, formatMonthLabel, merchantInitials } from "@/lib/format";
@@ -18,7 +16,7 @@ import { Donut } from "@/components/donut";
 import { Dismissible } from "@/components/dismissible";
 import { OnboardingCard } from "@/components/onboarding-card";
 import { TxRow } from "@/components/tx-row";
-import { BellIcon, ChevronIcon, RefreshIcon, TargetIcon } from "@/components/icons";
+import { BellIcon, ChevronIcon } from "@/components/icons";
 
 export const dynamic = "force-dynamic";
 
@@ -53,28 +51,15 @@ export default async function DashboardPage() {
     hasPasskey = credentials.length > 0;
   }
 
-  const [
-    summary,
-    prevSummary,
-    availableBalance,
-    attention,
-    recent,
-    goals,
-    recurring,
-    homeCurrency,
-  ] = await Promise.all([
-    getMonthSummary(now),
-    getMonthSummary(subMonths(now, 1)),
-    getAvailableBalance(),
-    getAttentionItems(),
-    getTransactions({ limit: 5 }),
-    getGoals(),
-    getRecurringForMonth(now),
-    getHomeCurrency(),
-  ]);
-
-  // Gastos fijos: cuántos ya se pagaron este mes (tarjeta del dashboard)
-  const recurringPaid = recurring.filter((r) => r.status === "paid").length;
+  const [summary, prevSummary, availableBalance, attention, recent, homeCurrency] =
+    await Promise.all([
+      getMonthSummary(now),
+      getMonthSummary(subMonths(now, 1)),
+      getAvailableBalance(),
+      getAttentionItems(),
+      getTransactions({ limit: 5 }),
+      getHomeCurrency(),
+    ]);
 
   // Comparación de gastos vs el mes anterior — el "ajá" de una app de
   // finanzas está en el delta, no en el número absoluto.
@@ -83,9 +68,9 @@ export default async function DashboardPage() {
       ? Math.round(((summary.expenses - prevSummary.expenses) / prevSummary.expenses) * 100)
       : null;
 
-  // Presupuesto ahora vive en la barra de navegación; esta tarjeta da el
-  // acceso a Metas (la pantalla que salió del nav por ser de uso esporádico).
-  const activeGoals = goals.filter((g) => g.current_amount < g.target_amount).length;
+  // Gastos fijos y Metas ya no tienen tarjeta aquí: viven bajo "Más" en el
+  // nav, con su estado a la vista. El dashboard se queda con lo de un
+  // vistazo: saldo, movimientos del mes y transacciones recientes.
 
   // Usuario recién llegado: sin transacciones aún. La guía de primeros
   // pasos reemplaza a los banners sueltos hasta el primer movimiento.
@@ -255,48 +240,6 @@ export default async function DashboardPage() {
           </Link>
         </Dismissible>
       )}
-
-      {/* Accesos compactos: Gastos fijos y Metas en una sola fila (los
-          pendientes ya viven en la campanita, no se duplican aquí) */}
-      <div className="mt-3.5 grid grid-cols-2 gap-2.5">
-        <Link
-          href="/recurring"
-          className="flex flex-col gap-2 rounded-[14px] border border-line bg-surface px-4 py-3.5"
-        >
-          <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-background text-ink">
-            <RefreshIcon />
-          </span>
-          <span>
-            <span className="block text-[13px] font-semibold text-ink">Gastos fijos</span>
-            <span className="mt-0.5 block text-[11px] text-ink-muted">
-              {recurring.length === 0
-                ? "Regístralos"
-                : recurringPaid === recurring.length
-                  ? "🎉 Todos pagados"
-                  : `${recurringPaid}/${recurring.length} pagados`}
-            </span>
-          </span>
-        </Link>
-
-        <Link
-          href="/goals"
-          className="flex flex-col gap-2 rounded-[14px] border border-line bg-surface px-4 py-3.5"
-        >
-          <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-background text-ink">
-            <TargetIcon size={18} />
-          </span>
-          <span>
-            <span className="block text-[13px] font-semibold text-ink">Metas de ahorro</span>
-            <span className="mt-0.5 block text-[11px] text-ink-muted">
-              {goals.length === 0
-                ? "Crea la primera"
-                : activeGoals === 0
-                  ? "🎉 Completadas"
-                  : `${activeGoals} ${activeGoals === 1 ? "activa" : "activas"}`}
-            </span>
-          </span>
-        </Link>
-      </div>
 
       {/* Recientes */}
       <div className="flex items-center justify-between pb-2.5 pt-6">

@@ -199,7 +199,7 @@ export async function getAvailableBalance(): Promise<number> {
  * de Gemini — todo ya consume esta función, así que las personalizadas
  * aparecen en todos lados sin más cambios.
  */
-export async function getCategories(): Promise<Category[]> {
+export async function getAllCategories(): Promise<Category[]> {
   if (!isSupabaseConfigured()) return MOCK_CATEGORIES;
   const userId = await requireUserId();
   const { data, error } = await getSupabaseAdmin()
@@ -211,23 +211,38 @@ export async function getCategories(): Promise<Category[]> {
   return data ?? [];
 }
 
-/** Solo las categorías propias del usuario (las que puede editar/borrar). */
-export async function getCustomCategories(): Promise<Category[]> {
+/**
+ * Ids de las categorías que este usuario ocultó (migración 0011). Cacheado
+ * por request: varias vistas piden categorías en la misma página.
+ */
+export const getHiddenCategoryIds = cache(async (): Promise<string[]> => {
   if (!isSupabaseConfigured()) return [];
-  const userId = await requireUserId();
   const { data, error } = await getSupabaseAdmin()
-    .from("categories")
-    .select("*")
-    .eq("user_id", userId)
-    .order("name");
-  if (error) throw new Error(`Error cargando categorías: ${error.message}`);
-  return data ?? [];
+    .from("hidden_categories")
+    .select("category_id")
+    .eq("user_id", await requireUserId());
+  if (error) throw new Error(`Error cargando categorías ocultas: ${error.message}`);
+  return (data ?? []).map((r) => r.category_id as string);
+});
+
+/**
+ * Las categorías que se OFRECEN al elegir (alta manual, detalle,
+ * presupuestos, gastos fijos, sugerencia de Gemini): todas menos las que el
+ * usuario ocultó. Los reportes usan `getAllCategories()` a propósito, para
+ * que el historial no pierda su ícono y color al ocultar una categoría.
+ */
+export async function getCategories(): Promise<Category[]> {
+  const [all, hiddenIds] = await Promise.all([getAllCategories(), getHiddenCategoryIds()]);
+  const hidden = new Set(hiddenIds);
+  return all.filter((c) => !hidden.has(c.id));
 }
 
 export async function getBudgetsForMonth(month: Date): Promise<BudgetWithSpend[]> {
   const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}-01`;
+  // Todas (incluidas ocultas): un presupuesto ya creado sobre una categoría
+  // que luego se ocultó debe seguir mostrándose con su nombre y color.
   const [categories, transactions] = await Promise.all([
-    getCategories(),
+    getAllCategories(),
     getTransactions({ month }),
   ]);
 
@@ -275,8 +290,10 @@ export async function getGoals(): Promise<SavingsGoal[]> {
 
 /** Gasto por categoría del mes, ordenado descendente. Incluye solo categorías con gasto. */
 export async function getCategorySpend(month: Date): Promise<CategorySpend[]> {
+  // Todas (incluidas ocultas): ocultar una categoría no debe hacer que los
+  // gastos que ya tenía pierdan su ícono y color en las gráficas.
   const [categories, transactions] = await Promise.all([
-    getCategories(),
+    getAllCategories(),
     getTransactions({ month }),
   ]);
   const totals = new Map<string, number>();

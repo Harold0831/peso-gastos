@@ -92,13 +92,18 @@ export async function runSyncForUser(
   if (newEmails.length === 0) return { synced: 0, errors };
 
   // Globales (seed) + las propias del usuario, para que Gemini pueda sugerir
-  // también las categorías personalizadas al clasificar sus correos.
-  const { data: categories, error: catError } = await supabase
-    .from("categories")
-    .select("name")
-    .or(`user_id.is.null,user_id.eq.${userId}`);
+  // también las categorías personalizadas al clasificar sus correos. Las que
+  // el usuario ocultó (migración 0011) se excluyen: no tiene sentido
+  // sugerirle una categoría que quitó de su lista.
+  const [{ data: categories, error: catError }, { data: hidden, error: hiddenError }] =
+    await Promise.all([
+      supabase.from("categories").select("id, name").or(`user_id.is.null,user_id.eq.${userId}`),
+      supabase.from("hidden_categories").select("category_id").eq("user_id", userId),
+    ]);
   if (catError) throw new Error(`Error cargando categorías: ${catError.message}`);
-  const categoryNames = (categories ?? []).map((c) => c.name);
+  if (hiddenError) throw new Error(`Error cargando categorías ocultas: ${hiddenError.message}`);
+  const hiddenIds = new Set((hidden ?? []).map((h) => h.category_id));
+  const categoryNames = (categories ?? []).filter((c) => !hiddenIds.has(c.id)).map((c) => c.name);
 
   // Tasa USD→DOP del día, pedida una sola vez por corrida y solo si algún
   // correo viene en moneda extranjera. Fallo suave: sin tasa la transacción
