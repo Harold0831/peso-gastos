@@ -1,5 +1,5 @@
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { getGmailStatus, getUserById, requireUserId } from "@/lib/users";
+import { getGmailStatus, getUserById, hasPassword, requireUserId } from "@/lib/users";
 import { getCredentialsForUser } from "@/lib/webauthn";
 import { ProfileClient } from "./profile-client";
 
@@ -21,16 +21,18 @@ export default async function ProfilePage() {
         gmail={{ linked: false, email: null, syncEnabled: false, enabledBanks: null }}
         hasPasskey={false}
         pushConfigured={false}
+        passwordSet={false}
         demoMode
       />
     );
   }
 
   const userId = await requireUserId();
-  const [user, gmail, credentials] = await Promise.all([
+  const [user, gmail, credentials, passwordSet] = await Promise.all([
     getUserById(userId),
     getGmailStatus(userId),
     getCredentialsForUser(userId),
+    hasPassword(userId),
   ]);
 
   return (
@@ -46,6 +48,7 @@ export default async function ProfilePage() {
       }}
       hasPasskey={credentials.length > 0}
       pushConfigured={pushConfigured}
+      passwordSet={passwordSet}
     />
   );
 }

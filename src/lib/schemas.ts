@@ -208,6 +208,38 @@ export const pushSubscriptionSchema = z.object({
   }),
 });
 
+/**
+ * Login con correo y contraseña. El mínimo de 8 caracteres es el piso que
+ * recomienda OWASP; no se exigen mayúsculas/símbolos a propósito (empuja a
+ * contraseñas cortas y predecibles en vez de frases largas).
+ */
+const passwordField = z
+  .string()
+  .min(8, "La contraseña debe tener al menos 8 caracteres")
+  .max(200, "Máximo 200 caracteres");
+
+const emailField = z.string().trim().toLowerCase().email("Escribe un correo válido");
+
+export const registerSchema = z.object({
+  name: z.string().trim().min(1, "Escribe tu nombre").max(60, "Máximo 60 caracteres"),
+  email: emailField,
+  password: passwordField,
+});
+
+export const loginSchema = z.object({
+  email: emailField,
+  // Sin validar largo aquí: una contraseña vieja más corta debe poder
+  // intentar entrar (y fallar por credenciales, no por formato).
+  password: z.string().min(1, "Escribe tu contraseña"),
+});
+
+/** Fijar o cambiar la contraseña desde el perfil (ya con sesión activa). */
+export const setPasswordSchema = z.object({
+  /** Requerida solo si la cuenta YA tiene contraseña (ver setPassword). */
+  currentPassword: z.string().optional(),
+  password: passwordField,
+});
+
 /** Alta de token de API (endpoint admin). */
 export const mintTokenSchema = z.object({
   email: z.string().trim().email("Email inválido"),

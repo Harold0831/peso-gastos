@@ -23,6 +23,7 @@ import {
   pushSubscriptionSchema,
   recurringExpenseSchema,
   recurringPaidSchema,
+  setPasswordSchema,
   transactionSchema,
 } from "./schemas";
 
@@ -873,6 +874,51 @@ export async function disableFaceId(): Promise<ActionResult> {
     console.error("[disableFaceId]", err);
     return { ok: false, error: "No se pudo desactivar. Intenta de nuevo." };
   }
+  revalidatePath("/profile");
+  return { ok: true };
+}
+
+/**
+ * Fija o cambia la contraseña del usuario en sesión (perfil → "Contraseña").
+ *
+ * Esta es la vía SEGURA de añadirle contraseña a una cuenta creada con
+ * Google: la sesión abierta prueba que la cuenta es suya, cosa que el
+ * registro público no puede probar (por eso ahí se rechaza un correo ya
+ * existente en vez de adoptarlo).
+ *
+ * Si ya tenía contraseña, exige la actual — así, con una sesión robada, un
+ * atacante no puede cambiarla y dejar al dueño fuera.
+ */
+export async function setPassword(input: unknown): Promise<ActionResult> {
+  const parsed = setPasswordSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { hashPassword, verifyPassword } = await import("./password");
+  const { getPasswordAccount, savePasswordHash } = await import("./users");
+  const { getUserById } = await import("./users");
+
+  const userId = await requireUserId();
+  const user = await getUserById(userId);
+  if (!user) return { ok: false, error: "No se encontró tu cuenta." };
+
+  const account = await getPasswordAccount(user.email);
+  if (account?.passwordHash) {
+    if (!parsed.data.currentPassword) {
+      return { ok: false, error: "Escribe tu contraseña actual." };
+    }
+    if (!(await verifyPassword(parsed.data.currentPassword, account.passwordHash))) {
+      return { ok: false, error: "La contraseña actual no es correcta." };
+    }
+  }
+
+  try {
+    await savePasswordHash(userId, await hashPassword(parsed.data.password));
+  } catch (err) {
+    console.error("[setPassword]", err);
+    return { ok: false, error: "No se pudo guardar la contraseña." };
+  }
+
   revalidatePath("/profile");
   return { ok: true };
 }
