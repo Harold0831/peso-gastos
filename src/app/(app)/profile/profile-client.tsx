@@ -10,6 +10,7 @@ import {
   savePushSubscription,
   sendFeedback,
   setEnabledBanks,
+  setPassword,
 } from "@/lib/actions";
 import { markAuthenticated } from "@/lib/app-lock";
 import { SUPPORTED_BANKS } from "@/lib/banks";
@@ -31,6 +32,8 @@ interface ProfileClientProps {
   hasPasskey: boolean;
   /** true si las claves VAPID están configuradas en el servidor. */
   pushConfigured: boolean;
+  /** true si la cuenta ya tiene contraseña (entró por correo o la fijó aquí). */
+  passwordSet: boolean;
   demoMode?: boolean;
 }
 
@@ -48,6 +51,7 @@ export function ProfileClient({
   gmail,
   hasPasskey,
   pushConfigured,
+  passwordSet,
   demoMode,
 }: ProfileClientProps) {
   const router = useRouter();
@@ -199,6 +203,32 @@ export function ProfileClient({
       setRegistering(false);
     }
   }
+
+  // --- Contraseña (login por correo) ---
+  const [pwOpen, setPwOpen] = useState(false);
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [savingPw, startSavingPw] = useTransition();
+
+  const handleSetPassword = () => {
+    setPwError(null);
+    startSavingPw(async () => {
+      const result = await setPassword({
+        password: newPw,
+        ...(passwordSet ? { currentPassword: currentPw } : {}),
+      });
+      if (!result.ok) {
+        setPwError(result.error ?? "No se pudo guardar");
+        return;
+      }
+      toast(passwordSet ? "✓ Contraseña actualizada" : "✓ Contraseña creada");
+      setPwOpen(false);
+      setCurrentPw("");
+      setNewPw("");
+      router.refresh();
+    });
+  };
 
   const handleSendFeedback = () => {
     setFeedbackError(null);
@@ -359,6 +389,78 @@ export function ProfileClient({
           {pushError && <p className="mt-2 text-xs font-medium text-expense">{pushError}</p>}
         </section>
       )}
+
+      {/* Contraseña — permite entrar sin Google. En iPhone es además la vía
+          para no salir de la PWA al iniciar sesión (ver issue #29). */}
+      <section className={sectionClass}>
+        <h2 className={labelClass}>Contraseña</h2>
+        {pwOpen ? (
+          <>
+            {passwordSet && (
+              <input
+                value={currentPw}
+                onChange={(e) => setCurrentPw(e.target.value)}
+                type="password"
+                autoComplete="current-password"
+                placeholder="Contraseña actual"
+                className="mt-3 w-full rounded-btn border border-line bg-surface p-3 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-accent"
+              />
+            )}
+            <input
+              value={newPw}
+              onChange={(e) => setNewPw(e.target.value)}
+              type="password"
+              autoComplete="new-password"
+              placeholder="Nueva contraseña (mínimo 8)"
+              className="mt-2 w-full rounded-btn border border-line bg-surface p-3 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-accent"
+            />
+            {pwError && <p className="mt-2 text-xs font-medium text-expense">{pwError}</p>}
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => {
+                  setPwOpen(false);
+                  setPwError(null);
+                  setCurrentPw("");
+                  setNewPw("");
+                }}
+                className="flex-1 rounded-btn border border-line py-2.5 text-[13px] font-semibold text-ink-muted"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSetPassword}
+                disabled={savingPw || newPw.length < 8 || demoMode}
+                className="flex-[1.5] rounded-btn bg-accent py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
+              >
+                {savingPw ? "Guardando…" : "Guardar contraseña"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mt-3 flex items-center gap-2.5">
+              <span className={`h-2 w-2 rounded-pill ${passwordSet ? "bg-income" : "bg-line"}`} />
+              <p className="text-[13px] font-medium text-ink">
+                {passwordSet
+                  ? "Puedes entrar con tu correo y contraseña"
+                  : "Solo entras con Google"}
+              </p>
+            </div>
+            <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
+              {passwordSet
+                ? "Útil en el iPhone: entrar con correo no saca la app del modo pantalla completa, como sí pasa con Google."
+                : "Ponle una contraseña a tu cuenta para entrar sin Google. En iPhone evita que la app se abra con las barras del navegador al iniciar sesión."}
+            </p>
+            <button
+              onClick={() => setPwOpen(true)}
+              disabled={demoMode}
+              className="mt-3 w-full rounded-btn bg-accent py-3 text-[13px] font-bold text-white disabled:opacity-50"
+            >
+              {passwordSet ? "Cambiar contraseña" : "Crear contraseña"}
+            </button>
+          </>
+        )}
+      </section>
 
       {/* Face ID */}
       <section className={sectionClass}>

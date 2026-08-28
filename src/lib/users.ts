@@ -108,6 +108,105 @@ export async function getUserByEmail(email: string): Promise<User | null> {
   return data;
 }
 
+/**
+ * Crea una cuenta con correo y contraseña. Devuelve null si el correo ya
+ * existe: NO se le pone contraseña a una cuenta ajena que ya está creada
+ * (sería un secuestro — cualquiera que sepa tu correo entraría). Para
+ * añadirle contraseña a una cuenta de Google existente está `setPassword`,
+ * que exige tener la sesión abierta.
+ */
+export async function createUserWithPassword(
+  email: string,
+  name: string,
+  passwordHash: string,
+): Promise<User | null> {
+  const supabase = getSupabaseAdmin();
+  const normalized = email.toLowerCase();
+
+  const { data: existing } = await supabase
+    .from("users")
+    .select("id")
+    .eq("email", normalized)
+    .maybeSingle();
+  if (existing) return null;
+
+  const { data: created, error } = await supabase
+    .from("users")
+    .insert({ email: normalized, name, password_hash: passwordHash })
+    .select("*")
+    .single();
+  // 23505 = carrera con otro registro simultáneo del mismo correo
+  if (error?.code === "23505") return null;
+  if (error) throw new Error(`Error creando usuario: ${error.message}`);
+  return created;
+}
+
+export interface PasswordAccount {
+  id: string;
+  passwordHash: string | null;
+  failedAttempts: number;
+  lockedUntil: string | null;
+}
+
+/** Datos de login por contraseña de un correo (null si no existe la cuenta). */
+export async function getPasswordAccount(email: string): Promise<PasswordAccount | null> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("users")
+    .select("id, password_hash, failed_login_attempts, locked_until")
+    .eq("email", email.toLowerCase())
+    .maybeSingle();
+  if (error) throw new Error(`Error buscando usuario: ${error.message}`);
+  if (!data) return null;
+  return {
+    id: data.id,
+    passwordHash: data.password_hash,
+    failedAttempts: data.failed_login_attempts ?? 0,
+    lockedUntil: data.locked_until,
+  };
+}
+
+/** Freno de fuerza bruta: tras MAX_ATTEMPTS fallos seguidos, bloquea un rato. */
+export const MAX_LOGIN_ATTEMPTS = 8;
+const LOCK_MINUTES = 15;
+
+export async function registerFailedLogin(userId: string, currentAttempts: number): Promise<void> {
+  const attempts = currentAttempts + 1;
+  const lockedUntil =
+    attempts >= MAX_LOGIN_ATTEMPTS
+      ? new Date(Date.now() + LOCK_MINUTES * 60_000).toISOString()
+      : null;
+  await getSupabaseAdmin()
+    .from("users")
+    .update({ failed_login_attempts: attempts, locked_until: lockedUntil })
+    .eq("id", userId);
+}
+
+export async function clearFailedLogins(userId: string): Promise<void> {
+  await getSupabaseAdmin()
+    .from("users")
+    .update({ failed_login_attempts: 0, locked_until: null })
+    .eq("id", userId);
+}
+
+/** ¿Este usuario tiene contraseña configurada? (para la UI del perfil). */
+export async function hasPassword(userId: string): Promise<boolean> {
+  const { data } = await getSupabaseAdmin()
+    .from("users")
+    .select("password_hash")
+    .eq("id", userId)
+    .maybeSingle();
+  return Boolean(data?.password_hash);
+}
+
+/** Guarda el hash de la contraseña de un usuario ya autenticado. */
+export async function savePasswordHash(userId: string, passwordHash: string): Promise<void> {
+  const { error } = await getSupabaseAdmin()
+    .from("users")
+    .update({ password_hash: passwordHash, failed_login_attempts: 0, locked_until: null })
+    .eq("id", userId);
+  if (error) throw new Error(`Error guardando la contraseña: ${error.message}`);
+}
+
 /** Moneda de casa de un usuario (en la que ve sus totales). Default DOP. */
 export async function getHomeCurrencyForUser(userId: string): Promise<Currency> {
   const { data, error } = await getSupabaseAdmin()

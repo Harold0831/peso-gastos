@@ -21,7 +21,7 @@ node scripts/generate-icons.mjs   # regenerar íconos PWA
 
 **Modo demo:** sin `.env.local` la app corre con datos mock y sin login —
 toda la UI es navegable. Las mutaciones devuelven un error amigable.
-Con Supabase configurado, el middleware exige sesión (login con Google).
+Con Supabase configurado, el middleware exige sesión (Google o correo).
 
 ## Arquitectura
 
@@ -31,7 +31,7 @@ src/
 ├── app/
 │   ├── layout.tsx            # Fuente Inter, meta PWA, theme script
 │   ├── manifest.ts           # Web manifest (→ /manifest.webmanifest)
-│   ├── login/                # "Continuar con Google"
+│   ├── login/                # "Continuar con Google" + correo/contraseña
 │   ├── (app)/                # Shell con BottomNav — pantallas principales
 │   │   ├── page.tsx          # 1. Dashboard: balance, pills, donut, recientes
 │   │   ├── loading.tsx       #    Skeleton — una por pantalla, ver abajo
@@ -52,12 +52,13 @@ src/
 │   │   │   └── loading.tsx   #    las por defecto (+ restablecerlas)
 │   │   ├── cards/            # 10. Tarjetas: gasto por tarjeta, con
 │   │   │   └── loading.tsx   #     auto-descubrimiento desde card_last4
-│   │   ├── profile/          # 11. Perfil: Gmail, bancos, Face ID, push
-│   │   │   └── loading.tsx
+│   │   ├── profile/          # 11. Perfil: Gmail, bancos, contraseña,
+│   │   │   └── loading.tsx   #     Face ID, push
 │   │   └── notifications/    # 12. Bandeja (campanita): derivada del estado,
 │   │       └── loading.tsx   #    ver getAttentionItems() — sin tabla propia
 │   └── api/
 │       ├── auth/google/        # GET inicia OAuth; callback crea usuario+sesión
+│       ├── auth/email/         # POST register/login con correo y contraseña
 │       ├── auth/…              # register/login options+verify (passkey del
 │       │                       #   app-lock), logout
 │       ├── sync/               # GET Bearer SYNC_SECRET — sincroniza a TODOS
@@ -74,6 +75,7 @@ src/
 │   ├── users.ts            # upsert desde Google, gmail_accounts, requireUserId()
 │   ├── google-oauth.ts     # Authorization code flow + verificación de id_token
 │   ├── crypto.ts           # AES-256-GCM para refresh tokens en la DB
+│   ├── password.ts         # Hash de contraseñas con scrypt (login por correo)
 │   ├── schemas.ts          # Schemas Zod compartidos
 │   ├── sync.ts             # runSyncForUser / runSyncForGmailAddress / runSyncAll
 │   ├── bank-parser.ts      # Registro de bancos: remitentes + dispatcher por From
@@ -108,6 +110,7 @@ supabase/
 ├── migrations/0010_...sql   # recurring_expenses + recurring_payments (gastos fijos)
 ├── migrations/0011_...sql   # hidden_categories (ocultar las por defecto)
 ├── migrations/0012_...sql   # cards (nombre a los card_last4 ya guardados)
+├── migrations/0013_...sql   # users.password_hash (login con correo)
 └── seed.sql                 # Categorías por defecto (globales, user_id null)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
@@ -626,6 +629,34 @@ activa el bloqueo por el `useState(false)` inicial del gate.
   vincular su Gmail de todos modos — un solo consent da identidad +
   permiso de lectura, cero fricción para amigos no técnicos. El passkey
   quedó como bloqueo local opcional (Face ID).
+- **Login con correo y contraseña como segunda puerta** (migración `0013`,
+  `lib/password.ts`): Google dejó de ser la única opción por un problema
+  REAL de iOS — una PWA instalada que navega a `accounts.google.com` sale
+  del modo standalone, y la cookie de sesión termina en el almacén del
+  navegador incrustado, NO en el de la PWA: el usuario vuelve a `/login` en
+  bucle infinito. Un login por correo es **same-origin**, nunca abandona el
+  dominio, y la sesión cae donde debe. Detalles del modelo:
+  - **scrypt de `node:crypto`**, no bcrypt/argon2: sin dependencias nuevas
+    (coherente con evitar paquetes pesados), memory-hard y avalado por
+    OWASP. Formato `scrypt$N$r$p$salt$hash`, auto-descriptivo para poder
+    subir los parámetros sin invalidar hashes viejos.
+  - **El registro rechaza un correo ya existente** en vez de adoptarlo:
+    sin verificar el correo, ponerle contraseña a una cuenta ajena sería un
+    secuestro. La vía segura de añadirle contraseña a una cuenta de Google
+    es `setPassword` desde el perfil, donde la sesión abierta prueba que la
+    cuenta es tuya. Al revés SÍ se enlaza solo: Google verifica el correo,
+    así que `upsertUserFromGoogle` puede reclamar una cuenta creada con
+    contraseña.
+  - **Recuperación sin enviar correos**: la app no manda ningún email, así
+    que no hay "olvidé mi contraseña" por link. Como todos entran con
+    Gmail, la vía de vuelta es entrar con Google y cambiarla desde el
+    perfil (está escrito en la pantalla de login). Único caso sin salida:
+    alguien registrado con un correo no-Google que olvide su contraseña.
+  - **Freno de fuerza bruta**: `failed_login_attempts` + `locked_until` en
+    `users`; a los 8 fallos seguidos bloquea 15 minutos y se limpia al
+    entrar bien. El endpoint responde lo MISMO para "no existe" y
+    "contraseña mala" — decir cuál falló confirmaría qué correos tienen
+    cuenta.
 - **Refresh tokens cifrados en la DB** (AES-256-GCM, `lib/crypto.ts`):
   un refresh token da lectura del correo completo de esa persona — en
   texto plano, un dump de la DB sería un desastre. La clave vive solo en

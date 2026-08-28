@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EmailAuthForm } from "./email-auth-form";
 
 const ERROR_MESSAGES: Record<string, string> = {
   cancelado: "Cancelaste el inicio de sesión. Inténtalo de nuevo cuando quieras.",
@@ -50,12 +51,27 @@ export default async function LoginPage({
           Continuar con Google
         </Link>
 
-        <p className="mt-4 text-xs leading-relaxed text-ink-muted">
+        <p className="mt-3 text-xs leading-relaxed text-ink-muted">
           Google te preguntará si permites leer tu correo — es lo que usa Peso para importar las
           notificaciones de tus bancos automáticamente. Puedes omitirlo y registrar todo a mano.
         </p>
 
         {message && <p className="mt-4 text-sm font-medium text-expense">{message}</p>}
+
+        <div className="mt-6 flex w-full items-center gap-3">
+          <span className="h-px flex-1 bg-line" />
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+            o con tu correo
+          </span>
+          <span className="h-px flex-1 bg-line" />
+        </div>
+
+        <EmailAuthForm />
+
+        <p className="mt-5 text-[11px] leading-relaxed text-ink-muted">
+          Con correo y contraseña puedes usar Peso registrando tus gastos a mano. Para importarlos
+          solos desde tu banco, vincula tu Gmail después desde tu perfil.
+        </p>
       </div>
     </main>
   );
