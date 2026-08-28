@@ -3,8 +3,8 @@
 App de rastreo de gastos e ingresos, **multi-usuario**. Cada usuario entra
 con su cuenta de Google y puede vincular su Gmail para que Peso importe
 automáticamente las notificaciones de transacciones de sus bancos (Qik,
-Banco Popular, Banco Caribe, Scotiabank, BHD — elegibles por usuario en
-/profile), las categorice con Gemini y las presente en una PWA
+Banco Popular, Banco Caribe, Scotiabank, BHD, Banreservas — elegibles por
+usuario en /profile), las categorice con Gemini y las presente en una PWA
 móvil instalable en iPhone. Creada por Harold, desplegada en Vercel,
 pensada para él y sus amigos (máx. 100 usuarios — ver § Configurar Google).
 
@@ -80,8 +80,9 @@ src/
 │   ├── qik-parser.ts       # Parser Qik (5 tipos; exporta htmlToText compartido)
 │   ├── popular-parser.ts   # Parser Banco Popular (6 tipos, tablas columnares)
 │   ├── caribe-parser.ts    # Parser Banco Caribe (1 tipo confirmado, multi-moneda)
-│   ├── scotiabank-parser.ts # Parser Scotiabank (5 tipos; fecha del receivedAt)
+│   ├── scotiabank-parser.ts # Parser Scotiabank (6 tipos; fecha del receivedAt)
 │   ├── bhd-parser.ts       # Parser BHD (2 tipos; ignora estados "en proceso")
+│   ├── banreservas-parser.ts # Parser Banreservas (3 tipos; bug de fecha 24h+PM)
 │   ├── gmail.ts             # Cliente Gmail REST (recibe refresh token por usuario)
 │   ├── gmail-webhook.ts     # Verificación del JWT de Pub/Sub push
 │   ├── gemini.ts             # Categorización con gemini-2.0-flash
@@ -313,20 +314,25 @@ no esté ahí nunca se sincroniza. **Para agregar un banco: consigue 2+
 correos reales (no adivines el formato — falló dos veces con Qik), crea su
 `<banco>-parser.ts` con fixtures en tests, y regístralo.**
 
-Bancos soportados (2026-07-05): **Qik** (5 tipos), **Banco Popular**
+Bancos soportados (2026-08-03): **Qik** (5 tipos), **Banco Popular**
 (6 tipos — remitente `notificaciones@popularenlinea.com`, tablas
 COLUMNARES: etiquetas primero y valores después, fechas en D/M/YYYY,
 D/M/YY y YYYYMMDD según el tipo, montos `RD$`/`RD $`/`RD` a secas),
 **Banco Caribe** (1 tipo confirmado — `notificaciones@bancocaribe.com.do`,
 campos inline, monto SIN prefijo con la moneda en campo aparte — puede ser
 USD — y fecha/hora con espacios: `24 / 06 / 2026`, `12 : 25 : 56`),
-**Scotiabank** (5 tipos — `alertas@scotiabank.com`, prosa sin tabla;
+**Scotiabank** (6 tipos — `alertas@scotiabank.com`, prosa sin tabla;
 **el cuerpo trae hora pero NO fecha** — la fecha sale del `receivedAt` del
-correo, por eso los parsers reciben ese parámetro) y **BHD** (2 tipos —
+correo, por eso los parsers reciben ese parámetro), **BHD** (2 tipos —
 `alertas@bhd.com.do`; "Pagos al Instante en Proceso" de
 `notificaciones@bhd.com.do` se ignora a propósito: es un estado intermedio
-que duplicaría la transferencia final). El detalle de cada formato vive
-como doc comment en su parser.
+que duplicaría la transferencia final) y **Banreservas** (3 tipos —
+`notificaciones@banreservas.com` y `notificacionestubancoapp@banreservas.com`,
+campos "Label:" con el valor en la línea siguiente; **bug real del banco**:
+la fecha a veces llega en 24h con un sufijo "PM" pegado encima
+(`31/07/2026 17:32 PM`) — el parser detecta hora > 12 y la toma tal cual,
+ignorando el sufijo). El detalle de cada formato vive como doc comment en
+su parser.
 
 ### Qik
 

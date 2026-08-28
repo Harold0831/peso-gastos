@@ -44,6 +44,15 @@ Hola FRANCISCO S,
 Se realizó una transferencia por una cantidad de $7,500.00 desde la cuenta ***9430 a las 04:30 am AST.
 `;
 
+// Real, reenviado 2026-08-03 por otro amigo de Harold. Sin "a las HH:MM" en
+// el cuerpo — usa receivedAt tal cual.
+const DEPOSITO_NOMINA = `
+[image: Scotiabank]
+Hola FRANCISCO,
+Has recibido un depósito de nómina en tu cuenta terminada en ***1374 por un monto de $27,287.83 DOP.
+Puedes consultar los detalles de esta transacción en Scotia Caribbean App o Scotia en Línea.
+`;
+
 describe("parseScotiabankEmail", () => {
   it("parsea un pago al instante como gasto (con banco destino)", () => {
     const result = parseScotiabankEmail("Pago al Instante realizado", PAGO_INSTANTE, RECEIVED);
@@ -83,6 +92,16 @@ describe("parseScotiabankEmail", () => {
     expect(result).not.toBeNull();
     expect(result!.merchant).toBe("Transferencia a terceros");
     expect(result!.amount).toBe(7500);
+  });
+
+  it("parsea un depósito de nómina como ingreso", () => {
+    const result = parseScotiabankEmail("Depósito de nómina recibido", DEPOSITO_NOMINA, RECEIVED);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("income");
+    expect(result!.merchant).toBe("Depósito de nómina");
+    expect(result!.amount).toBe(27287.83);
+    // sin "a las HH:MM" en el cuerpo → usa receivedAt tal cual
+    expect(result!.date.toISOString()).toBe("2026-06-30T08:32:00.000Z");
   });
 
   it("devuelve null con un asunto desconocido (alertas de login, etc.)", () => {

@@ -5,6 +5,7 @@ import { isIgnorablePopularEmail, parsePopularEmail } from "./popular-parser";
 import { parseCaribeEmail } from "./caribe-parser";
 import { parseScotiabankEmail } from "./scotiabank-parser";
 import { parseBhdEmail } from "./bhd-parser";
+import { parseBanreservasEmail } from "./banreservas-parser";
 
 /**
  * Registro de bancos soportados. Para agregar un banco nuevo:
@@ -69,6 +70,15 @@ const BANKS: BankDefinition[] = [
     // "Pagos al Instante en Proceso" es un estado intermedio que duplicaría
     // la transacción final (isIgnorableBhdEmail); el resto de tipos no
     // catalogados también se ignora en silencio.
+    isIgnorable: () => true,
+  },
+  {
+    id: "banreservas",
+    name: "Banreservas",
+    senders: ["notificaciones@banreservas.com", "notificacionestubancoapp@banreservas.com"],
+    parse: (subject, body) => parseBanreservasEmail(subject, body),
+    // Solo conocemos 3 tipos de correo (ver banreservas-parser.ts); el
+    // resto se ignora sin error hasta catalogar más tipos reales.
     isIgnorable: () => true,
   },
 ];
