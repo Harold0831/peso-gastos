@@ -207,3 +207,16 @@ export function CreditCardIcon({ className, size = 22 }: IconProps) {
     </svg>
   );
 }
+
+export function FilterIcon({ className, size = 22 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M4 5h16l-6 7.5V19l-4 2v-8.5L4 5z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
