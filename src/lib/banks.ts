@@ -10,6 +10,7 @@ export const SUPPORTED_BANKS = [
   { id: "caribe", name: "Banco Caribe" },
   { id: "scotiabank", name: "Scotiabank" },
   { id: "bhd", name: "BHD" },
+  { id: "banreservas", name: "Banreservas" },
 ] as const;
 
 export type BankId = (typeof SUPPORTED_BANKS)[number]["id"];

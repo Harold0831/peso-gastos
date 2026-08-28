@@ -12,13 +12,16 @@ import { htmlToText } from "./qik-parser";
  *   3. "Retiro de cajero automático"   → gasto
  *   4. "Compra fuera del país"         → gasto (compra con tarjeta)
  *   5. "Transferencias a terceros"     → gasto
+ *   6. "Depósito de nómina recibido"   → ingreso (confirmado 2026-08-03,
+ *      reenviado por otro amigo de Harold). Sin "a las HH:MM" en el
+ *      cuerpo — usa receivedAt tal cual, igual que el resto sin hora.
  *
  * Todos son prosa (sin tabla). PARTICULARIDAD CLAVE: el cuerpo trae la
  * hora ("a las 07:19 am AST") pero NO la fecha — la fecha se toma de
  * `receivedAt` (cuándo llegó el correo, que es segundos después de la
  * transacción). Montos como "$1,757.49" o "$18,000.00 DOP".
  *
- * Solo se soportan estos 5 tipos; otros asuntos de Scotiabank (alertas de
+ * Solo se soportan estos 6 tipos; otros asuntos de Scotiabank (alertas de
  * login, etc.) se ignoran en silencio hasta catalogar correos reales.
  */
 
@@ -106,6 +109,16 @@ export function parseScotiabankEmail(
     );
     if (amount === null) return null;
     return { ...base, merchant: "Transferencia a terceros", amount };
+  }
+
+  if (s.includes("depósito de nómina recibido") || s.includes("deposito de nomina recibido")) {
+    const amount = parseScotiaAmount(
+      body.match(
+        /recibido un dep[oó]sito de n[oó]mina[\s\S]*?por un monto de\s+(\$[\d,.]+)/i,
+      )?.[1] ?? "",
+    );
+    if (amount === null) return null;
+    return { ...base, type: "income", merchant: "Depósito de nómina", amount };
   }
 
   return null;
