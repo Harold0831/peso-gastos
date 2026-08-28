@@ -14,15 +14,15 @@ export function CategoryDonut({
   currency: Currency;
 }) {
   return (
-    <div className="relative mx-auto h-44 w-44">
+    <div className="relative mx-auto h-48 w-48">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
             data={data}
             dataKey="value"
             nameKey="name"
-            innerRadius={62}
-            outerRadius={80}
+            innerRadius={70}
+            outerRadius={88}
             startAngle={90}
             endAngle={-270}
             strokeWidth={0}
