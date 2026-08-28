@@ -281,6 +281,20 @@ design/                      # Referencias visuales (no es código de la app)
   ahorrado, y ✏️ siempre. Todas revalidan `/goals` **y** `/` con
   `revalidateGoals()` — el dashboard muestra el conteo de metas activas y
   se quedaba desactualizado.
+- **Filtros de categoría y tarjeta en hoja inferior**: en /transactions,
+  categoría y tarjeta vivían como dos filas de chips SIEMPRE visibles,
+  antes incluso de ver una sola transacción — con categorías personalizables
+  esa fila podía crecer sin límite, y sumada a la fila de tarjetas eran
+  hasta 5 filas de chrome sobre la lista. Ahora viven en un botón
+  **"Filtros"** (mismo patrón de hoja inferior que `ConfirmDialog`/
+  `AdjustBalanceDialog`) con un badge del conteo de filtros activos;
+  dentro, las categorías van en grid/wrap (no scroll ciego) y se aplican al
+  toque, sin paso de "Aplicar" — el botón de cerrar muestra en vivo cuántos
+  resultados hay ("Ver N resultados"). Los chips de **tipo** (Todos/Gastos/
+  Ingresos/Por confirmar) se quedaron fuera del botón a propósito: no son
+  un filtro que acota, son la vista misma, llevan el badge de pendientes, y
+  la campanita/dashboard enlazan directo a `?filter=pendientes` — esconder
+  eso habría roto la señal de "qué estás viendo" al llegar por ese enlace.
 - **Confirmación en lote** (`confirmTransactionsBulk`): en /transactions,
   filtro "Por confirmar" → "Seleccionar varias" activa checkboxes en
   `TxRow` (prop `selectable`). Si 2+ pendientes comparten la misma

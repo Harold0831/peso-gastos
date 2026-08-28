@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { addMonths, subMonths } from "date-fns";
@@ -8,7 +8,7 @@ import type { Transaction } from "@/lib/types";
 import { formatDayLabel, formatMonthLabel } from "@/lib/format";
 import { confirmTransactionsBulk, syncNow } from "@/lib/actions";
 import { TxRow } from "@/components/tx-row";
-import { RefreshIcon } from "@/components/icons";
+import { FilterIcon, RefreshIcon } from "@/components/icons";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { useToast } from "@/components/toast";
 
@@ -95,6 +95,8 @@ export function TxList({
   );
   const [syncing, startSync] = useTransition();
 
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkCategory, setBulkCategory] = useState<string | null>(null);
@@ -112,6 +114,10 @@ export function TxList({
   );
 
   const pendingCount = transactions.filter((t) => !t.confirmed).length;
+  // Categoría y tarjeta viven detrás de "Filtros" (antes eran dos filas de
+  // chips siempre visibles — con categorías personalizables esa fila podía
+  // crecer sin límite). El badge del botón muestra cuántos hay activos.
+  const activeFilterCount = (category ? 1 : 0) + (card ? 1 : 0);
 
   const changeFilter = (next: Filter) => {
     setFilter(next);
@@ -296,62 +302,26 @@ export function TxList({
           })}
         </div>
 
-        {/* Chips de categoría (scroll: son filtros opcionales, no un menú) */}
-        <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-3">
+        {/* Botón "Filtros": categoría y tarjeta viven en la hoja inferior en
+            vez de dos filas de chips siempre visibles */}
+        <div className="flex items-center px-5 pb-3">
           <button
-            onClick={() => setCategory(null)}
-            className={`shrink-0 rounded-pill border px-3 py-1.5 text-[11px] font-semibold transition ${
-              category === null
+            onClick={() => setFiltersOpen(true)}
+            className={`flex items-center gap-1.5 rounded-pill border px-3.5 py-2 text-xs font-semibold transition ${
+              activeFilterCount > 0
                 ? "border-accent bg-accent/10 text-accent"
-                : "border-line bg-surface text-ink-muted"
+                : "border-line bg-surface text-ink"
             }`}
           >
-            Todas
+            <FilterIcon size={14} />
+            Filtros
+            {activeFilterCount > 0 && (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-pill bg-accent px-1 text-[10px] font-bold text-white">
+                {activeFilterCount}
+              </span>
+            )}
           </button>
-          {categories.map((name) => (
-            <button
-              key={name}
-              onClick={() => setCategory((c) => (c === name ? null : name))}
-              className={`shrink-0 rounded-pill border px-3 py-1.5 text-[11px] font-semibold transition ${
-                category === name
-                  ? "border-accent bg-accent/10 text-accent"
-                  : "border-line bg-surface text-ink-muted"
-              }`}
-            >
-              {name}
-            </button>
-          ))}
         </div>
-
-        {/* Chips de tarjeta — solo si el usuario registró alguna: sin
-            tarjetas, esta fila no existe y la pantalla es idéntica a antes */}
-        {cards.length > 0 && (
-          <div className="no-scrollbar flex gap-2 overflow-x-auto px-5 pb-3">
-            <button
-              onClick={() => setCard(null)}
-              className={`shrink-0 rounded-pill border px-3 py-1.5 text-[11px] font-semibold transition ${
-                card === null
-                  ? "border-accent bg-accent/10 text-accent"
-                  : "border-line bg-surface text-ink-muted"
-              }`}
-            >
-              Todas las tarjetas
-            </button>
-            {cards.map((c) => (
-              <button
-                key={c.last4}
-                onClick={() => setCard((current) => (current === c.last4 ? null : c.last4))}
-                className={`shrink-0 rounded-pill border px-3 py-1.5 text-[11px] font-semibold transition ${
-                  card === c.last4
-                    ? "border-accent bg-accent/10 text-accent"
-                    : "border-line bg-surface text-ink-muted"
-                }`}
-              >
-                {c.nickname}
-              </button>
-            ))}
-          </div>
-        )}
 
         {filter === "pendientes" && filtered.length > 0 && (
           <div className="flex justify-end px-5 pb-3">
@@ -461,6 +431,147 @@ export function TxList({
           </div>
         </div>
       )}
+
+      <FiltersSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        categories={categories}
+        category={category}
+        onCategoryChange={setCategory}
+        cards={cards}
+        card={card}
+        onCardChange={setCard}
+        resultCount={filtered.length}
+      />
     </PullToRefresh>
+  );
+}
+
+/**
+ * Filtros de categoría y tarjeta en una hoja inferior (mismo patrón que
+ * ConfirmDialog/AdjustBalanceDialog): antes eran dos filas de chips siempre
+ * visibles en la pantalla — con categorías personalizables esa fila podía
+ * crecer sin límite y el filtro de tarjeta se sumaba encima. Se aplican al
+ * toque (sin botón "Aplicar" aparte, igual que el resto de chips de la
+ * app); "Limpiar" resetea ambos.
+ */
+function FiltersSheet({
+  open,
+  onClose,
+  categories,
+  category,
+  onCategoryChange,
+  cards,
+  card,
+  onCardChange,
+  resultCount,
+}: {
+  open: boolean;
+  onClose: () => void;
+  categories: string[];
+  category: string | null;
+  onCategoryChange: (value: string | null) => void;
+  cards: { last4: string; nickname: string }[];
+  card: string | null;
+  onCardChange: (value: string | null) => void;
+  resultCount: number;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const hasActive = category !== null || card !== null;
+  const chipClass = (active: boolean) =>
+    `rounded-pill border px-3.5 py-2 text-xs font-semibold transition ${
+      active ? "border-accent bg-accent text-white" : "border-line bg-surface text-ink"
+    }`;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Filtros"
+      className="fixed inset-0 z-50 flex items-end justify-center"
+    >
+      <button
+        aria-label="Cerrar filtros"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/40"
+      />
+      <div className="animate-screen-in relative z-10 max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-t-[20px] border-t border-line bg-card pb-safe shadow-[0_-8px_30px_rgba(0,0,0,0.2)]">
+        <div className="flex items-center justify-between px-5 pt-5">
+          <h2 className="text-[16px] font-bold tracking-tight text-ink">Filtros</h2>
+          {hasActive && (
+            <button
+              onClick={() => {
+                onCategoryChange(null);
+                onCardChange(null);
+              }}
+              className="text-[13px] font-semibold text-ink-muted"
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
+
+        <div className="px-5 pt-4">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            Categoría
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => onCategoryChange(null)} className={chipClass(category === null)}>
+              Todas
+            </button>
+            {categories.map((name) => (
+              <button
+                key={name}
+                onClick={() => onCategoryChange(category === name ? null : name)}
+                className={chipClass(category === name)}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {cards.length > 0 && (
+          <div className="px-5 pt-5">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Tarjeta
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => onCardChange(null)} className={chipClass(card === null)}>
+                Todas las tarjetas
+              </button>
+              {cards.map((c) => (
+                <button
+                  key={c.last4}
+                  onClick={() => onCardChange(card === c.last4 ? null : c.last4)}
+                  className={chipClass(card === c.last4)}
+                >
+                  {c.nickname}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="px-5 py-5">
+          <button
+            onClick={onClose}
+            className="w-full rounded-[14px] bg-accent py-3.5 text-[14px] font-bold tracking-tight text-white shadow-[0_4px_12px_rgba(37,99,235,0.25)] transition active:scale-[0.99]"
+          >
+            Ver {resultCount} {resultCount === 1 ? "resultado" : "resultados"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
