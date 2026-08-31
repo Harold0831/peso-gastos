@@ -81,7 +81,7 @@ Necesitas cuentas (todas tienen plan gratis suficiente para uso personal):
 
 2. **Base de datos.** Crea un proyecto en Supabase y, en el **SQL Editor**,
    ejecuta en orden **todos** los archivos de `supabase/migrations/`
-   (`0001` → `0013`) y luego `supabase/seed.sql`. Si añades migraciones
+   (`0001` → `0014`) y luego `supabase/seed.sql`. Si añades migraciones
    nuevas, corren igual: en orden numérico.
 
 3. **Variables de entorno.** Copia `.env.example` a `.env.local` y complétalas.

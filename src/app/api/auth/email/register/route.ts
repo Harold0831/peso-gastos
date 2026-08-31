@@ -4,6 +4,7 @@ import { hashPassword } from "@/lib/password";
 import { createUserWithPassword } from "@/lib/users";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/session";
+import { AUTH_LIMITS, RATE_LIMITED_MESSAGE, checkRateLimit, clientIp } from "@/lib/rate-limit";
 
 /**
  * Alta de cuenta con correo y contraseña. Deja la sesión iniciada, igual
@@ -17,6 +18,18 @@ import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ error: "La app está en modo demo." }, { status: 503 });
+  }
+
+  // Límite por IP, ANTES de validar nada: cada alta ejecuta un scrypt con
+  // N=32768 (~96 MB), así que sin este freno un script en bucle tumba las
+  // funciones y sube la factura, sin necesidad siquiera de acertar un correo.
+  const allowed = await checkRateLimit(
+    `register:${clientIp(request)}`,
+    AUTH_LIMITS.register.limit,
+    AUTH_LIMITS.register.windowSeconds,
+  );
+  if (!allowed) {
+    return NextResponse.json({ error: RATE_LIMITED_MESSAGE }, { status: 429 });
   }
 
   const parsed = registerSchema.safeParse(await request.json().catch(() => null));

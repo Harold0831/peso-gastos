@@ -4,6 +4,7 @@ import { verifyPassword } from "@/lib/password";
 import { clearFailedLogins, getPasswordAccount, registerFailedLogin } from "@/lib/users";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/session";
+import { AUTH_LIMITS, RATE_LIMITED_MESSAGE, checkRateLimit, clientIp } from "@/lib/rate-limit";
 
 /** Mismo mensaje para "no existe" y "contraseña mala": decir cuál de los dos
  *  falló le confirmaría a un atacante qué correos tienen cuenta. */
@@ -12,6 +13,18 @@ const GENERIC_ERROR = "Correo o contraseña incorrectos.";
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ error: "La app está en modo demo." }, { status: 503 });
+  }
+
+  // Límite por IP, ANTES de tocar la base o gastar un scrypt. El freno de
+  // failed_login_attempts es por cuenta: no ve nada si el atacante prueba una
+  // contraseña común contra mil correos distintos.
+  const allowed = await checkRateLimit(
+    `login:${clientIp(request)}`,
+    AUTH_LIMITS.login.limit,
+    AUTH_LIMITS.login.windowSeconds,
+  );
+  if (!allowed) {
+    return NextResponse.json({ error: RATE_LIMITED_MESSAGE }, { status: 429 });
   }
 
   const parsed = loginSchema.safeParse(await request.json().catch(() => null));

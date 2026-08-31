@@ -112,6 +112,7 @@ supabase/
 ├── migrations/0011_...sql   # hidden_categories (ocultar las por defecto)
 ├── migrations/0012_...sql   # cards (nombre a los card_last4 ya guardados)
 ├── migrations/0013_...sql   # users.password_hash (login con correo)
+├── migrations/0014_...sql   # rate_limits + check_rate_limit() (freno por IP)
 └── seed.sql                 # Categorías por defecto (globales, user_id null)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
@@ -338,6 +339,38 @@ sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
   Antes del delete se revoca el refresh token en Google (`revokeRefreshToken`,
   fallo suave): borrar la fila quita NUESTRO acceso, pero el consentimiento
   seguiría vivo en la cuenta del usuario.
+- **Rate limiting** (`rate_limits` + `check_rate_limit()`, migración `0014`):
+  el contador vive en Postgres, NO en memoria — la app corre en funciones
+  serverless y cada petición puede caer en una instancia distinta, así que un
+  `Map` en memoria no cuenta nada útil (un atacante en paralelo pega en
+  instancias frías y lo esquiva). Es una función de Postgres y no un
+  select+update desde el código porque leer y escribir por separado deja una
+  carrera por la que N peticiones simultáneas leen el mismo contador y todas
+  pasan — justo el escenario de un ataque; el upsert de `check_rate_limit()`
+  es una sola sentencia atómica (verificado: 40 llamadas concurrentes → 40
+  incrementos). Ventana fija, con limpieza oportunista (~1 de cada 100
+  llamadas borra filas de más de un día) para que la tabla no crezca sin fin.
+  **Falla ABIERTO** a propósito: si Supabase no responde deja pasar y lo
+  loguea — fallar cerrado convertiría un hipo de la DB en "nadie puede entrar".
+  Aplicado en `/api/auth/email/register` (5/hora por IP — cada alta gasta un
+  scrypt de ~96 MB, sin freno un script tumba las functions y sube la
+  factura), `/api/auth/email/login` (20/15min por IP — complementa
+  `failed_login_attempts`, que es por CUENTA y no ve nada si prueban una
+  contraseña común contra mil correos), `setPassword` (10/hora por usuario) y
+  `/api/admin/mint-token` (10/hora por IP). `clientIp()` prefiere `x-real-ip`
+  y, en `x-forwarded-for`, toma la ÚLTIMA entrada: la primera puede haberla
+  escrito el cliente, la última la pone el proxy de confianza.
+- **Error boundaries** (`(app)/error.tsx`, `global-error.tsx`,
+  `not-found.tsx`): antes no había NINGUNO. Como `data.ts` lanza cuando
+  Supabase falla, cualquier hipo de red le mostraba al usuario la pantalla
+  gris de Next.js ("Application error: a server-side exception has occurred"),
+  en inglés y sin salida — toda la app cuidaba los errores de MUTACIÓN
+  (`friendlyDbError` + toasts) y dejaba las LECTURAS al descubierto.
+  `(app)/error.tsx` conserva el BottomNav (se puede navegar a otra pantalla),
+  ofrece `reset()` y muestra el `digest` para poder cruzarlo con los logs de
+  Vercel — el stack real nunca se manda al navegador. Ojo al probarlo: el
+  boundary es un client component, así que el HTML del SSR **no** lo trae; se
+  pinta tras hidratar (mirar el HTML crudo con curl engaña).
 - **Tokens revocados**: si un usuario quita el acceso desde su cuenta de
   Google, el refresh falla con `invalid_grant` → `GmailAuthError` →
   `gmail_accounts.sync_enabled=false`. El dashboard y el perfil muestran
