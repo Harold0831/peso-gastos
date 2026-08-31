@@ -4,6 +4,7 @@ import { mintTokenForUser } from "@/lib/api-token";
 import { getUserByEmail, setHomeCurrencyForUser } from "@/lib/users";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { mintTokenSchema } from "@/lib/schemas";
+import { RATE_LIMITED_MESSAGE, checkRateLimit, clientIp } from "@/lib/rate-limit";
 
 /**
  * Genera (o rota) el token de API de un usuario. Protegido por
@@ -20,6 +21,13 @@ export async function POST(request: NextRequest) {
   if (!secret) {
     return NextResponse.json({ error: "ADMIN_SECRET no configurado" }, { status: 503 });
   }
+  // Adivinar un ADMIN_SECRET de 32 bytes por fuerza bruta es inviable, así que
+  // esto no está para eso: es para que un endpoint público sin sesión no se
+  // pueda martillear gratis desde fuera.
+  if (!(await checkRateLimit(`mint-token:${clientIp(request)}`, 10, 3600))) {
+    return NextResponse.json({ error: RATE_LIMITED_MESSAGE }, { status: 429 });
+  }
+
   const provided = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/, "");
   if (!constantTimeEqual(provided, secret)) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });

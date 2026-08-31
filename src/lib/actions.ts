@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
+import { AUTH_LIMITS, RATE_LIMITED_MESSAGE, checkRateLimit } from "./rate-limit";
 import { deleteUserAccount, requireUserId } from "./users";
 import {
   budgetSchema,
@@ -900,6 +901,17 @@ export async function setPassword(input: unknown): Promise<ActionResult> {
   const { getUserById } = await import("./users");
 
   const userId = await requireUserId();
+
+  // Aunque exige sesión, "cambiar contraseña" verifica la ACTUAL — sin freno,
+  // un dispositivo con la sesión abierta permitiría adivinarla a fuerza bruta.
+  // La clave es el usuario, no la IP: aquí ya sabemos quién es.
+  const allowed = await checkRateLimit(
+    `set-password:${userId}`,
+    AUTH_LIMITS.setPassword.limit,
+    AUTH_LIMITS.setPassword.windowSeconds,
+  );
+  if (!allowed) return { ok: false, error: RATE_LIMITED_MESSAGE };
+
   const user = await getUserById(userId);
   if (!user) return { ok: false, error: "No se encontró tu cuenta." };
 
