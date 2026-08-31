@@ -113,3 +113,56 @@ body {
 .animate-goal-pop {
   animation: goal-pop 600ms ease-in-out;
 }
+
+/* Tipografía de las páginas legales (/privacy, /terms). Son texto corrido y
+   largo — el resto de la app es UI compacta, así que no hay estilos de prosa
+   que reusar. Se define aquí en vez de repetir clases en cada <p>. */
+.legal h1 {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.legal h2 {
+  margin-top: 32px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.legal h3 {
+  margin-top: 20px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.legal p,
+.legal li {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.legal ul {
+  list-style: disc;
+  padding-left: 20px;
+}
+
+.legal strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.legal a {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.legal .updated {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}

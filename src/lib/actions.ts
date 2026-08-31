@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
-import { requireUserId } from "./users";
+import { deleteUserAccount, requireUserId } from "./users";
 import {
   budgetSchema,
   bulkConfirmSchema,
@@ -14,6 +14,7 @@ import {
   categoryVisibilitySchema,
   confirmSchema,
   contributionSchema,
+  deleteAccountSchema,
   dismissNotificationsSchema,
   enabledBanksSchema,
   goalSchema,
@@ -1002,6 +1003,36 @@ export async function sendFeedback(message: string): Promise<ActionResult> {
 }
 
 export async function logoutAction(): Promise<void> {
+  const { cookies } = await import("next/headers");
+  (await cookies()).delete("peso_session");
+  redirect("/login");
+}
+
+/**
+ * Elimina la cuenta del usuario en sesión y todos sus datos. Irreversible.
+ *
+ * Exige teclear una palabra (ver DELETE_ACCOUNT_KEYWORD): un segundo botón
+ * de "¿seguro?" no basta para lo único de la app que no tiene vuelta atrás.
+ * Se revalida en el servidor, no solo en el diálogo — una server action es
+ * un endpoint público.
+ *
+ * En caso de éxito NO retorna: cierra la sesión y redirige a /login (el
+ * redirect de Next lanza una excepción de control, por eso va fuera de
+ * cualquier try/catch).
+ */
+export async function deleteAccountAction(confirmation: string): Promise<ActionResult> {
+  const parsed = deleteAccountSchema.safeParse({ confirmation });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const userId = await requireUserId();
+  try {
+    await deleteUserAccount(userId);
+  } catch (err) {
+    console.error("[deleteAccountAction]", err);
+    return { ok: false, error: "No se pudo eliminar la cuenta. Inténtalo de nuevo." };
+  }
+
   const { cookies } = await import("next/headers");
   (await cookies()).delete("peso_session");
   redirect("/login");

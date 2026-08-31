@@ -1,9 +1,9 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { getSupabaseAdmin } from "./supabase";
-import { encryptToken } from "./crypto";
+import { decryptToken, encryptToken } from "./crypto";
 import { SESSION_COOKIE, readSessionUserId } from "./session";
-import type { GoogleIdentity } from "./google-oauth";
+import { revokeRefreshToken, type GoogleIdentity } from "./google-oauth";
 import type { Currency } from "./types";
 
 export interface User {
@@ -249,6 +249,43 @@ export async function getGmailStatus(userId: string): Promise<GmailStatus> {
     syncEnabled: data.sync_enabled,
     enabledBanks: data.enabled_banks,
   };
+}
+
+/**
+ * Elimina la cuenta y TODOS los datos del usuario, sin vuelta atrás.
+ *
+ * El borrado en cascada hace el trabajo pesado: cada tabla con user_id
+ * declara `references users(id) on delete cascade` (migraciones 0003, 0005,
+ * 0006, 0007, 0008, 0010, 0011, 0012), así que un solo DELETE sobre `users`
+ * se lleva transacciones, presupuestos, metas, gastos fijos, tarjetas,
+ * categorías propias, passkeys, tokens de API, suscripciones push y
+ * feedback. Si algún día se agrega una tabla por usuario SIN esa cascada,
+ * quedarían datos huérfanos aquí — la cascada es parte del contrato.
+ *
+ * Antes del DELETE se revoca el permiso de Gmail en Google: borrar la fila
+ * quita nuestro acceso, pero el consentimiento seguiría vivo en la cuenta
+ * del usuario. Si la revocación falla, la eliminación sigue igual.
+ */
+export async function deleteUserAccount(userId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const { data: gmail } = await supabase
+    .from("gmail_accounts")
+    .select("refresh_token_enc")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (gmail?.refresh_token_enc) {
+    try {
+      await revokeRefreshToken(decryptToken(gmail.refresh_token_enc));
+    } catch (err) {
+      // Token ilegible (p. ej. cambió TOKEN_ENCRYPTION_KEY): no impide borrar.
+      console.error("[deleteUserAccount] No se pudo revocar el token de Gmail:", err);
+    }
+  }
+
+  const { error } = await supabase.from("users").delete().eq("id", userId);
+  if (error) throw new Error(`Error eliminando la cuenta: ${error.message}`);
 }
 
 /**

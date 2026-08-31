@@ -1,9 +1,10 @@
 # Peso — Finanzas personales (PWA)
 
 App multi-usuario para rastrear gastos e ingresos, instalable en el iPhone como
-PWA. Cada usuario entra con su cuenta de Google y puede **vincular su Gmail**
-para que Peso importe automáticamente las notificaciones de sus bancos, las
-**categorice con IA** (Gemini) y las muestre en una interfaz móvil limpia.
+PWA. Cada usuario entra con su cuenta de Google o con correo y contraseña, y
+puede **vincular su Gmail** para que Peso importe automáticamente las
+notificaciones de sus bancos, las **categorice con IA** (Gemini) y las muestre
+en una interfaz móvil limpia.
 
 **Stack:** Next.js 15 (App Router) · TypeScript · Tailwind v4 · Supabase
 (Postgres) · Gemini · Web Push · desplegada en Vercel.
@@ -44,8 +45,8 @@ configura Supabase (abajo).
 ## Bancos soportados
 
 Los parsers están hechos para bancos **dominicanos**: **Qik**, **Banco
-Popular**, **Banco Caribe**, **Scotiabank** y **BHD**. Cada usuario elige cuáles
-sincronizar desde su perfil.
+Popular**, **Banco Caribe**, **Scotiabank**, **BHD** y **Banreservas**. Cada
+usuario elige cuáles sincronizar desde su perfil.
 
 > **¿Otro banco u otro país?** La importación por correo no funcionará hasta que
 > escribas un parser para ese banco (necesitas 2+ correos reales — no adivines
@@ -79,8 +80,9 @@ Necesitas cuentas (todas tienen plan gratis suficiente para uso personal):
    ```
 
 2. **Base de datos.** Crea un proyecto en Supabase y, en el **SQL Editor**,
-   ejecuta en orden todos los archivos de `supabase/migrations/`
-   (`0001` → `0008`) y luego `supabase/seed.sql`.
+   ejecuta en orden **todos** los archivos de `supabase/migrations/`
+   (`0001` → `0013`) y luego `supabase/seed.sql`. Si añades migraciones
+   nuevas, corren igual: en orden numérico.
 
 3. **Variables de entorno.** Copia `.env.example` a `.env.local` y complétalas.
    La guía detallada de cada una (cómo obtener las credenciales de Google,
@@ -97,12 +99,19 @@ Necesitas cuentas (todas tienen plan gratis suficiente para uso personal):
    ```
 
 5. **Deploy (opcional).** Importa el repo en Vercel, define las mismas env vars
-   en *Production*, y sigue la sección de **Gmail Push** del CLAUDE.md
+   en _Production_, y sigue la sección de **Gmail Push** del CLAUDE.md
    (necesita la URL real del deploy).
+
+> **Antes de compartir tu instancia con alguien:** define
+> `NEXT_PUBLIC_CONTACT_EMAIL`. Es el correo que aparece en `/privacy` y
+> `/terms`, y sin él sale un placeholder (`tu-correo@ejemplo.com`). Esas dos
+> páginas son públicas a propósito: Google exige una política de privacidad
+> accesible sin login para conceder el scope `gmail.readonly`. Revisa su texto
+> y ajústalo a lo que haga tu instancia.
 
 > **Nota sobre Google:** operar sin la verificación formal de Google significa
 > que cada usuario ve una pantalla de "app no verificada" (hay que tocar
-> *Avanzado → Continuar*) y hay un tope de 100 usuarios por proyecto. Para una
+> _Avanzado → Continuar_) y hay un tope de 100 usuarios por proyecto. Para una
 > instancia personal o de amigos es de sobra. Detalles en el CLAUDE.md.
 
 ---

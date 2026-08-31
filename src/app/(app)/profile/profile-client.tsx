@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { startRegistration } from "@simplewebauthn/browser";
 import {
@@ -17,6 +18,7 @@ import { SUPPORTED_BANKS } from "@/lib/banks";
 import { merchantInitials } from "@/lib/format";
 import { useToast } from "@/components/toast";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DeleteAccountDialog } from "@/components/delete-account-dialog";
 
 interface ProfileClientProps {
   name: string;
@@ -58,6 +60,7 @@ export function ProfileClient({
   const toast = useToast();
   const [faceIdError, setFaceIdError] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [disabling, startDisabling] = useTransition();
   const [confirmingDisable, setConfirmingDisable] = useState(false);
   // Plataforma para las instrucciones de instalación de la PWA. Se detecta
@@ -568,8 +571,18 @@ export function ProfileClient({
         )}
       </section>
 
+      {/* Legal */}
+      <div className="flex justify-center gap-5 px-5 pt-1 text-[12px]">
+        <Link href="/privacy" className="font-semibold text-ink-muted">
+          Privacidad
+        </Link>
+        <Link href="/terms" className="font-semibold text-ink-muted">
+          Términos
+        </Link>
+      </div>
+
       {/* Cerrar sesión */}
-      <div className="px-5 pb-6">
+      <div className="px-5 pt-3">
         <form action={logoutAction}>
           <button
             type="submit"
@@ -579,6 +592,20 @@ export function ProfileClient({
           </button>
         </form>
       </div>
+
+      {/* Eliminar cuenta: separado del resto y al final, para que nadie
+          llegue aquí por accidente buscando otra cosa. */}
+      <div className="mx-5 mb-6 mt-2 border-t border-line pt-4">
+        <button
+          onClick={() => setDeleteAccountOpen(true)}
+          disabled={demoMode}
+          className="w-full py-2 text-center text-[12px] font-semibold text-ink-muted disabled:opacity-50"
+        >
+          Eliminar mi cuenta y todos mis datos
+        </button>
+      </div>
+
+      <DeleteAccountDialog open={deleteAccountOpen} onCancel={() => setDeleteAccountOpen(false)} />
     </main>
   );
 }

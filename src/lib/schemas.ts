@@ -245,3 +245,21 @@ export const mintTokenSchema = z.object({
   email: z.string().trim().email("Email inválido"),
   home_currency: z.enum(["DOP", "USD", "EUR"]).optional(),
 });
+
+/**
+ * Palabra que hay que teclear para eliminar la cuenta. Vive aquí (módulo
+ * client-safe) y no en actions.ts porque un archivo "use server" solo puede
+ * exportar funciones async — el diálogo la necesita para mostrarla y para
+ * habilitar el botón.
+ */
+export const DELETE_ACCOUNT_KEYWORD = "ELIMINAR";
+
+export const deleteAccountSchema = z.object({
+  confirmation: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine((v) => v === DELETE_ACCOUNT_KEYWORD, {
+      message: `Escribe ${DELETE_ACCOUNT_KEYWORD} para confirmar.`,
+    }),
+});
