@@ -117,3 +117,32 @@ export async function verifyIdToken(idToken: string): Promise<GoogleIdentity> {
 export function hasGmailScope(scope: string): boolean {
   return scope.split(" ").includes(GMAIL_SCOPE);
 }
+
+/**
+ * Revoca un refresh token en Google. Se usa al eliminar la cuenta: borrar la
+ * fila de gmail_accounts deja de darnos acceso, pero el permiso seguiría
+ * concedido en la cuenta de Google del usuario hasta que él lo quite a mano
+ * — revocarlo aquí cierra el acceso de verdad, que es lo que espera alguien
+ * que acaba de borrar su cuenta.
+ *
+ * Falla suave a propósito: si Google no responde, la eliminación de la
+ * cuenta debe continuar igual. Sin el token guardado, la app no puede volver
+ * a leer el correo aunque el permiso siga colgando.
+ */
+export async function revokeRefreshToken(refreshToken: string): Promise<boolean> {
+  try {
+    const res = await fetch("https://oauth2.googleapis.com/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token: refreshToken }),
+    });
+    if (!res.ok) {
+      console.error("[revokeRefreshToken] Google respondió", res.status, await res.text());
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("[revokeRefreshToken] Excepción:", err);
+    return false;
+  }
+}

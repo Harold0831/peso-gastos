@@ -27,11 +27,12 @@ Con Supabase configurado, el middleware exige sesión (Google o correo).
 
 ```
 src/
-├── middleware.ts             # Protege todo excepto /login, /api/auth, /api/sync, /api/gmail-*, /api/voice-entry, /api/admin
+├── middleware.ts             # Protege todo excepto /login, /privacy, /terms, /api/auth, /api/sync, /api/gmail-*, /api/voice-entry, /api/admin
 ├── app/
 │   ├── layout.tsx            # Fuente Inter, meta PWA, theme script
 │   ├── manifest.ts           # Web manifest (→ /manifest.webmanifest)
 │   ├── login/                # "Continuar con Google" + correo/contraseña
+│   ├── (legal)/              # /privacy y /terms — PÚBLICAS (Google las exige)
 │   ├── (app)/                # Shell con BottomNav — pantallas principales
 │   │   ├── page.tsx          # 1. Dashboard: balance, pills, donut, recientes
 │   │   ├── loading.tsx       #    Skeleton — una por pantalla, ver abajo
@@ -317,6 +318,26 @@ design/                      # Referencias visuales (no es código de la app)
   /transactions → server action `syncNow` → `runSyncForUser(usuario en
 sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
   usuarios — para curl/atajos externos o backfills (`?days=N`).
+- **Páginas legales y eliminación de cuenta** (`app/(legal)/`): `/privacy` y
+  `/terms` son **públicas** (añadidas a `PUBLIC_PATHS` del middleware) — no
+  es una preferencia, Google **exige** una política de privacidad accesible
+  sin login para verificar el scope `gmail.readonly`, además de la
+  declaración de Uso Limitado (_Limited Use_) que está en el texto. El correo
+  de contacto sale de `NEXT_PUBLIC_CONTACT_EMAIL` (placeholder visible si no
+  se configura) para que quien despliegue su propia instancia ponga el suyo.
+  La fecha de "última actualización" vive en `lib/legal.ts` y se escribe a
+  mano: debe decir cuándo cambió el TEXTO, no cuándo se abrió la página —
+  **si cambias qué datos se guardan o con quién se comparten, actualiza el
+  texto Y la fecha.** `deleteAccountAction` es lo ÚNICO irreversible de la
+  app (borrar transacciones es soft delete, las metas se recrean), así que
+  exige teclear `ELIMINAR` y lo revalida en el servidor con Zod — una server
+  action es un endpoint público, no basta con el diálogo. El borrado real es
+  un solo `delete` sobre `users`: **todas** las tablas por usuario declaran
+  `on delete cascade` (migraciones 0003, 0005–0008, 0010–0012) y esa cascada
+  es parte del contrato — una tabla nueva sin ella dejaría datos huérfanos.
+  Antes del delete se revoca el refresh token en Google (`revokeRefreshToken`,
+  fallo suave): borrar la fila quita NUESTRO acceso, pero el consentimiento
+  seguiría vivo en la cuenta del usuario.
 - **Tokens revocados**: si un usuario quita el acceso desde su cuenta de
   Google, el refresh falla con `invalid_grant` → `GmailAuthError` →
   `gmail_accounts.sync_enabled=false`. El dashboard y el perfil muestran
@@ -473,6 +494,7 @@ Project Settings → Environment Variables.
 | `SESSION_SECRET`                                     | Firma la cookie JWT de sesión                                                                                    | `openssl rand -base64 32`           |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push (opcional): sin ellas la sección "Notificaciones" del perfil no aparece y nada más cambia               | `npx web-push generate-vapid-keys`  |
 | `VAPID_CONTACT_EMAIL`                                | Contacto que los servicios de push pueden usar si hay un problema con tus envíos (opcional; default placeholder) | Tu email                            |
+| `NEXT_PUBLIC_CONTACT_EMAIL`                          | Correo de contacto que se muestra en /privacy y /terms (Google exige un contacto en la política)                 | Tu email                            |
 
 ## Configurar Google (login + Gmail multi-usuario)
 

@@ -72,6 +72,18 @@ export default async function LoginPage({
           Con correo y contraseña puedes usar Peso registrando tus gastos a mano. Para importarlos
           solos desde tu banco, vincula tu Gmail después desde tu perfil.
         </p>
+
+        <p className="mt-4 text-[11px] leading-relaxed text-ink-muted">
+          Al crear una cuenta aceptas los{" "}
+          <Link href="/terms" className="font-semibold text-accent">
+            términos de uso
+          </Link>{" "}
+          y la{" "}
+          <Link href="/privacy" className="font-semibold text-accent">
+            política de privacidad
+          </Link>
+          .
+        </p>
       </div>
     </main>
   );

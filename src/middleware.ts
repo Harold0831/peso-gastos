@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
 /**
- * Protege todas las rutas excepto /login, las rutas de auth, /api/sync,
+ * Protege todas las rutas excepto /login, /privacy, /terms, las rutas de auth, /api/sync,
  * /api/gmail-webhook, /api/gmail-watch, /api/voice-entry y /api/admin (cada
  * una protegida por su propio mecanismo: Bearer SYNC_SECRET/ADMIN_SECRET,
  * token de API por usuario, o el JWT de identidad de Pub/Sub) y los assets
@@ -14,6 +14,10 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
 const PUBLIC_PATHS = [
   "/login",
+  // Google exige que la política de privacidad sea accesible SIN sesión para
+  // verificar el scope gmail.readonly; los términos van con ella.
+  "/privacy",
+  "/terms",
   "/api/auth",
   "/api/sync",
   "/api/gmail-webhook",
