@@ -214,7 +214,15 @@ export async function runSyncForGmailAddress(email: string): Promise<SyncResult>
     return { synced: 0, errors: [] }; // dirección desconocida o sync apagado: ignora
   }
   const result = await runSyncForUser(account.user_id, undefined, { notify: true });
-  await reportSyncErrors("sync automático (webhook)", result);
+  // La dirección va en el aviso porque sin ella el monitoreo es un callejón
+  // sin salida: el correo que falló es de OTRA persona (el webhook dispara
+  // para el buzón que cambió, no para el de quien recibe la alerta), así que
+  // sin saber de quién es no hay forma de pedirle la muestra que hace falta
+  // para arreglar el parser.
+  await reportSyncErrors("sync automático (webhook)", {
+    ...result,
+    errors: result.errors.map((e) => `[${email.toLowerCase()}] ${e}`),
+  });
   return result;
 }
 
