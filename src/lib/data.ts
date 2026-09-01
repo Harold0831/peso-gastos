@@ -273,15 +273,69 @@ export async function getAvailableBalance(): Promise<number> {
     .select("*")
     .eq("user_id", userId)
     .is("deleted_at", null);
-  // Solo cuentan las transacciones posteriores al saldo fijado (las anteriores
-  // ya están "dentro" de ese número); sin as_of, cuentan todas.
-  if (asOf) query = query.gt("date", asOf);
+  // Acota en SQL a lo que PODRÍA contar (barato); la decisión fina la toma
+  // countsTowardBalance() sobre esas pocas filas, para no duplicar la regla
+  // entre la consulta y el código.
+  if (asOf) query = query.gte("date", startOfAstDay(asOf));
   const { data, error } = await query;
   if (error) throw new Error(`Error calculando balance: ${error.message}`);
 
-  const rows = (data ?? []).map(normalizeTransaction);
+  const rows = (data ?? []).map(normalizeTransaction).filter((t) => countsTowardBalance(t, asOf));
   const toHome = await homeConverter(rows, home);
   return rows.reduce((s, t) => s + (t.type === "income" ? toHome(t) : -toHome(t)), opening);
+}
+
+/**
+ * Inicio del día (hora de RD, AST = UTC-4 fijo) que contiene `iso`.
+ *
+ * AST y no la zona del servidor: en Vercel el proceso corre en UTC, así que
+ * `startOfDay` local partiría el día a las 8 p. m. de RD.
+ */
+export function startOfAstDay(iso: string): string {
+  const ast = new Date(new Date(iso).getTime() - AST_OFFSET_MS);
+  const dayStart = Date.UTC(ast.getUTCFullYear(), ast.getUTCMonth(), ast.getUTCDate());
+  return new Date(dayStart + AST_OFFSET_MS).toISOString();
+}
+
+const AST_OFFSET_MS = 4 * 60 * 60 * 1000;
+
+/**
+ * ¿Esta transacción mueve el saldo fijado a mano, o ya está "dentro" de él?
+ *
+ * Comparar `date > as_of` a secas (lo que se hacía antes) tiene un fallo
+ * real: **muchos correos del banco no traen hora**, solo fecha, y los parsers
+ * los estampan al MEDIODÍA (los 6 tipos del Popular, las transferencias
+ * recibidas y los retiros CASH de Qik, y BHD/Caribe sin hora). Así que
+ * ajustar el saldo por la tarde y recibir después una transferencia dejaba la
+ * transacción con fecha 12:00 — "anterior" al ajuste — y el saldo no se movía.
+ * Bug real reportado el 2026-09-01.
+ *
+ * La regla usa el DÍA para lo que la fecha sí sabe con certeza, y `created_at`
+ * (cuándo se enteró Peso) solo para desempatar dentro del mismo día:
+ *
+ *   - Día POSTERIOR al ajuste → cuenta siempre.
+ *   - Día ANTERIOR → no cuenta: ya estaba en el saldo del banco que tecleaste.
+ *     Esto es lo que evita que un backfill de correos viejos infle el saldo.
+ *   - MISMO día → cuenta solo si Peso la registró después del ajuste, que es
+ *     justo lo que una fecha sin hora no puede distinguir por sí sola.
+ *
+ * Todo se compara en milisegundos, nunca como texto: Supabase devuelve los
+ * timestamptz como "…+00:00" y `toISOString()` produce "…Z", así que comparar
+ * las cadenas daría resultados equivocados.
+ */
+export function countsTowardBalance(
+  tx: { date: string; created_at: string },
+  asOf: string | null,
+): boolean {
+  if (!asOf) return true; // sin saldo fijado, cuenta todo el historial
+
+  const dayStart = new Date(startOfAstDay(asOf)).getTime();
+  const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+  const date = new Date(tx.date).getTime();
+
+  if (date < dayStart) return false; // día anterior
+  if (date >= dayEnd) return true; // día posterior
+  return new Date(tx.created_at).getTime() > new Date(asOf).getTime();
 }
 
 /**

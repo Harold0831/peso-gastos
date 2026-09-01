@@ -260,6 +260,23 @@ design/                      # Referencias visuales (no es código de la app)
   fija el saldo real de hoy (`as_of` = now): las transacciones previas quedan
   "dentro" de ese número y solo las nuevas lo mueven. Los pills de
   Ingresos/Gastos siguen siendo mensuales.
+  **Qué cuenta como "posterior" lo decide `countsTowardBalance()`, no un
+  `date > as_of` a secas** (bug real, corregido el 2026-09-01): muchos correos
+  del banco NO traen hora — solo fecha — y los parsers los estampan al
+  MEDIODÍA (los 6 tipos del Popular, las transferencias recibidas y los
+  retiros CASH de Qik, BHD/Caribe sin hora). Con la comparación directa,
+  ajustar el saldo por la tarde y recibir después una transferencia dejaba esa
+  fila con fecha 12:00 — "anterior" al ajuste — y el saldo no se movía; el
+  fallo se comía en silencio TODA transacción sin hora durante medio día. La
+  regla usa el DÍA para lo que la fecha sabe con certeza y `created_at` solo
+  para desempatar dentro del mismo día: día posterior → cuenta; día anterior →
+  no (esto es lo que evita que un backfill de correos viejos infle el saldo);
+  mismo día → cuenta si Peso la registró después del ajuste. El corte del día
+  es medianoche AST (`startOfAstDay()`), no del servidor — en Vercel el proceso
+  corre en UTC y partiría el día a las 8 p. m. de RD. Todo se compara en
+  MILISEGUNDOS: Supabase devuelve los `timestamptz` como `…+00:00` y
+  `toISOString()` produce `…Z`, así que comparar las cadenas da resultados
+  equivocados. Tests en `balance.test.ts`.
 - **Gastos fijos / pagos recurrentes** (`recurring_expenses` +
   `recurring_payments`, migración `0010`): distinto de un presupuesto (techo
   por categoría) — es un pago concreto que se repite (alquiler, Netflix, la
