@@ -184,7 +184,7 @@ function extractLast4(value: string | null): string | null {
  */
 export function isIgnorableQikEmail(subject: string, rawBody?: string): boolean {
   if (
-    /c[oó]digo cash (para|se ha)|estado de cuenta|fecha de pago se acerca|contrase[ñn]a de uso [uú]nico|cardholder services alert/i.test(
+    /c[oó]digo cash (para|se ha)|estado de cuenta|fecha de pago se acerca|recuerda realizar tu pago|contrase[ñn]a de uso [uú]nico|cardholder services alert/i.test(
       subject,
     )
   ) {
@@ -270,7 +270,16 @@ function buildCardPurchase(body: string): ParsedQikEmail | null {
 
   const amountRaw = extractField(body, "Monto");
   const dateRaw = extractField(body, "Fecha y hora");
-  const merchant = extractField(body, "Localidad") ?? extractField(body, "Lugar");
+  // "Comercio" (2026-09-01): visto en compras con tarjeta de CRÉDITO, a
+  // diferencia de "Localidad"/"Lugar" que traen las de débito. Inferido del
+  // ESQUELETO de un correo real reportado por monitoreo (sin su contenido,
+  // ver email-structure.ts) — no confirmado contra el correo completo como
+  // el resto de los campos de esta función. Si sigue fallando para tarjetas
+  // de crédito, hace falta el correo real.
+  const merchant =
+    extractField(body, "Localidad") ??
+    extractField(body, "Lugar") ??
+    extractField(body, "Comercio");
   const cardField = extractField(body, "Tarjeta Débito") ?? extractField(body, "Tarjeta Crédito");
   const balanceRaw = extractField(body, "Balance Disponible");
   if (!amountRaw || !dateRaw || !merchant) return null;
