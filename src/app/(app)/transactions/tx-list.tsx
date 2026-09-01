@@ -6,20 +6,17 @@ import { useRouter } from "next/navigation";
 import { addMonths, subMonths } from "date-fns";
 import type { Transaction } from "@/lib/types";
 import { formatDayLabel, formatMonthLabel } from "@/lib/format";
+import { monthToParam } from "@/lib/month-param";
+import { TX_FILTERS, type TxFilter } from "@/lib/tx-filters";
 import { confirmTransactionsBulk, syncNow } from "@/lib/actions";
 import { TxRow } from "@/components/tx-row";
 import { FilterIcon, RefreshIcon } from "@/components/icons";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { useToast } from "@/components/toast";
 
-type Filter = "todos" | "gastos" | "ingresos" | "pendientes";
+type Filter = TxFilter;
 
-const FILTERS: { id: Filter; label: string }[] = [
-  { id: "todos", label: "Todos" },
-  { id: "gastos", label: "Gastos" },
-  { id: "ingresos", label: "Ingresos" },
-  { id: "pendientes", label: "Por confirmar" },
-];
+const FILTERS = TX_FILTERS;
 
 /** Estados vacíos accionables: "por confirmar" vacío es una buena noticia,
  *  y la lista vacía ofrece los dos caminos (manual o sync) en vez de un
@@ -75,25 +72,38 @@ function EmptyState({
 
 export function TxList({
   transactions,
-  initialFilter,
+  month,
+  filter,
   initialCard,
+  pendingCount,
   categories,
   cards,
 }: {
+  /**
+   * Ya vienen acotadas por el servidor: las del mes visible, o TODAS las
+   * pendientes si la pestaña es "Por confirmar". Aquí no se filtra por fecha.
+   */
   transactions: Transaction[];
-  initialFilter?: string;
+  /** Mes visible, resuelto desde `?m=YYYY-MM`. */
+  month: Date;
+  /** Pestaña activa, resuelta desde `?filter=`. */
+  filter: Filter;
   /** Últimos 4 de la tarjeta a preseleccionar (llega desde /cards). */
   initialCard?: string;
+  /** Total global de pendientes para el badge — no sale de `transactions`. */
+  pendingCount: number;
   categories: string[];
   /** Tarjetas registradas; vacío = no se muestra el filtro por tarjeta. */
   cards: { last4: string; nickname: string }[];
 }) {
   const router = useRouter();
   const toast = useToast();
-  const [filter, setFilter] = useState<Filter>(
-    FILTERS.some((f) => f.id === initialFilter) ? (initialFilter as Filter) : "todos",
-  );
   const [syncing, startSync] = useTransition();
+  // Cambiar de mes o de pestaña es una navegación: el servidor vuelve a
+  // consultar. Con useTransition la vista ANTERIOR sigue en pantalla hasta
+  // que llegan los datos nuevos (en vez de parpadear a un esqueleto), y
+  // `navigating` solo baja la opacidad para avisar de que algo está pasando.
+  const [navigating, startNavigation] = useTransition();
 
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -103,25 +113,39 @@ export function TxList({
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkSaving, startBulkSaving] = useTransition();
 
-  // Mes visible (con el historial creciendo, la lista plana se volvía
-  // inmanejable) + filtro por categoría. "Por confirmar" ignora el mes a
-  // propósito: una pendiente vieja no debe esconderse por cambiar de mes.
-  const [month, setMonth] = useState(() => new Date());
   const [category, setCategory] = useState<string | null>(null);
   // Tarjeta (last4). Llega preseleccionada al entrar desde /cards.
   const [card, setCard] = useState<string | null>(
     initialCard && cards.some((c) => c.last4 === initialCard) ? initialCard : null,
   );
 
-  const pendingCount = transactions.filter((t) => !t.confirmed).length;
   // Categoría y tarjeta viven detrás de "Filtros" (antes eran dos filas de
   // chips siempre visibles — con categorías personalizables esa fila podía
   // crecer sin límite). El badge del botón muestra cuántos hay activos.
   const activeFilterCount = (category ? 1 : 0) + (card ? 1 : 0);
 
+  /**
+   * Lleva mes y pestaña a la URL. Son lo único que cambia QUÉ filas pide el
+   * servidor, así que no pueden quedarse en estado local; categoría y tarjeta
+   * sí, porque solo acotan lo que ya se cargó.
+   */
+  const navigate = (next: { filter?: Filter; month?: Date }) => {
+    const nextFilter = next.filter ?? filter;
+    const nextMonth = next.month ?? month;
+    const params = new URLSearchParams();
+    if (nextFilter !== "todos") params.set("filter", nextFilter);
+    // "Por confirmar" es global: llevar el mes en la URL solo confundiría.
+    if (nextFilter !== "pendientes") params.set("m", monthToParam(nextMonth));
+    const query = params.toString();
+    startNavigation(() => {
+      router.replace(query ? `/transactions?${query}` : "/transactions", { scroll: false });
+    });
+  };
+
   const changeFilter = (next: Filter) => {
-    setFilter(next);
+    if (next === filter) return;
     exitSelectionMode();
+    navigate({ filter: next });
   };
 
   const filtered = useMemo(() => {
@@ -137,12 +161,6 @@ export function TxList({
         rows = rows.filter((t) => !t.confirmed);
         break;
     }
-    if (filter !== "pendientes") {
-      rows = rows.filter((t) => {
-        const d = new Date(t.date);
-        return d.getFullYear() === month.getFullYear() && d.getMonth() === month.getMonth();
-      });
-    }
     if (category) {
       rows = rows.filter((t) => (t.category ?? t.ai_suggested_category) === category);
     }
@@ -150,7 +168,7 @@ export function TxList({
       rows = rows.filter((t) => t.card_last4 === card);
     }
     return rows;
-  }, [transactions, filter, month, category, card]);
+  }, [transactions, filter, category, card]);
 
   const groups = useMemo(() => {
     const map = new Map<string, Transaction[]>();
@@ -256,7 +274,7 @@ export function TxList({
         {filter !== "pendientes" && (
           <div className="flex items-center justify-center gap-2 pb-3">
             <button
-              onClick={() => setMonth((m) => subMonths(m, 1))}
+              onClick={() => navigate({ month: subMonths(month, 1) })}
               aria-label="Mes anterior"
               className="flex h-9 w-9 items-center justify-center text-lg text-ink-muted"
             >
@@ -266,7 +284,7 @@ export function TxList({
               {formatMonthLabel(month)}
             </span>
             <button
-              onClick={() => setMonth((m) => addMonths(m, 1))}
+              onClick={() => navigate({ month: addMonths(month, 1) })}
               aria-label="Mes siguiente"
               className="flex h-9 w-9 items-center justify-center text-lg text-ink-muted"
             >
@@ -352,34 +370,39 @@ export function TxList({
           </div>
         )}
 
-        {groups.length === 0 ? (
-          <EmptyState
-            filter={filter}
-            monthLabel={formatMonthLabel(month)}
-            syncing={syncing}
-            onSync={handleSync}
-          />
-        ) : (
-          groups.map(([day, items]) => (
-            <section key={day} className="mb-3">
-              <h2 className="px-5 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
-                {day}
-              </h2>
-              <div className="mx-5 overflow-hidden rounded-card border border-line bg-card">
-                {items.map((tx, i) => (
-                  <TxRow
-                    key={tx.id}
-                    tx={tx}
-                    divider={i < items.length - 1}
-                    selectable={selectionMode}
-                    selected={selectedIds.has(tx.id)}
-                    onToggleSelect={() => toggleSelect(tx.id)}
-                  />
-                ))}
-              </div>
-            </section>
-          ))
-        )}
+        {/* Mientras el servidor trae el mes nuevo se mantiene la lista
+            anterior atenuada: es más legible que un esqueleto parpadeando en
+            cada toque de ‹ ›. */}
+        <div className={navigating ? "opacity-50 transition-opacity" : undefined}>
+          {groups.length === 0 ? (
+            <EmptyState
+              filter={filter}
+              monthLabel={formatMonthLabel(month)}
+              syncing={syncing}
+              onSync={handleSync}
+            />
+          ) : (
+            groups.map(([day, items]) => (
+              <section key={day} className="mb-3">
+                <h2 className="px-5 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
+                  {day}
+                </h2>
+                <div className="mx-5 overflow-hidden rounded-card border border-line bg-card">
+                  {items.map((tx, i) => (
+                    <TxRow
+                      key={tx.id}
+                      tx={tx}
+                      divider={i < items.length - 1}
+                      selectable={selectionMode}
+                      selected={selectedIds.has(tx.id)}
+                      onToggleSelect={() => toggleSelect(tx.id)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
+        </div>
       </main>
 
       {selectionMode && (

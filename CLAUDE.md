@@ -286,6 +286,27 @@ design/                      # Referencias visuales (no es código de la app)
   ahorrado, y ✏️ siempre. Todas revalidan `/goals` **y** `/` con
   `revalidateGoals()` — el dashboard muestra el conteo de metas activas y
   se quedaba desactualizado.
+- **/transactions consulta solo lo que la vista muestra** (`?m=YYYY-MM` +
+  `?filter=`): la página llamaba a `getTransactions()` SIN límite y el cliente
+  escondía todo lo que no fuera del mes visible — para pintar treinta días se
+  serializaba el historial ENTERO en el payload RSC, en cada visita a la
+  pestaña. Ahora el mes vive en la URL y decide la consulta; "Por confirmar"
+  es la excepción y usa `getPendingTransactions()` (acotada por estado, no por
+  fecha, con tope `PENDING_LIMIT` = 300) porque esa vista es global a
+  propósito: una pendiente vieja no debe esconderse por cambiar de mes. El
+  badge de la pestaña sale de `getPendingCount()` (un `count` sin filas), no
+  de las transacciones cargadas. Mes y pestaña van en la URL y NO en estado de
+  React porque son lo único que cambia qué filas pide el servidor — categoría
+  y tarjeta siguen siendo estado local, solo acotan lo ya cargado. La
+  navegación usa `useTransition` + `router.replace`: la lista anterior se
+  queda atenuada hasta que llegan los datos, en vez de parpadear a un
+  esqueleto en cada toque de ‹ ›. `parseMonthParam()` construye la fecha en
+  hora LOCAL (`new Date(año, mes, 1)`): con `new Date("2026-03")` (UTC) el mes
+  se desplazaría en RD (UTC-4). Por la misma razón `getAttentionItems()` (la
+  campanita) dejó de cargar todo el historial para filtrar las no confirmadas
+  y usa `getPendingSummary()`, que ordena por `created_at` y no por `date` —
+  una transacción con fecha vieja puede haber entrado hoy, y ese timestamp es
+  el que decide si un aviso descartado reaparece.
 - **Filtros de categoría y tarjeta en hoja inferior**: en /transactions,
   categoría y tarjeta vivían como dos filas de chips SIEMPRE visibles,
   antes incluso de ver una sola transacción — con categorías personalizables

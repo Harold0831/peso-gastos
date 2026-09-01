@@ -119,6 +119,94 @@ export async function getTransactions(options?: {
   return (data ?? []).map(normalizeTransaction);
 }
 
+/**
+ * Tope de la cola de "Por confirmar". En la práctica son pocas (el usuario
+ * las confirma y dejan de estar pendientes), pero alguien que nunca confirme
+ * podría acumular miles y no tiene sentido mandarlas todas al navegador para
+ * una pantalla desde la que se confirman de a puñados.
+ */
+export const PENDING_LIMIT = 300;
+
+/**
+ * Todas las transacciones sin confirmar, sin acotar al mes.
+ *
+ * La vista "Por confirmar" es global a propósito: una pendiente vieja no debe
+ * esconderse por cambiar de mes. Por eso necesita su propia consulta en vez
+ * de reusar la del mes visible.
+ */
+export async function getPendingTransactions(): Promise<Transaction[]> {
+  if (!isSupabaseConfigured()) {
+    return MOCK_TRANSACTIONS.filter((t) => !t.confirmed && !t.deleted_at)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, PENDING_LIMIT);
+  }
+
+  const { data, error } = await getSupabaseAdmin()
+    .from("transactions")
+    .select("*")
+    .eq("user_id", await requireUserId())
+    .eq("confirmed", false)
+    .is("deleted_at", null)
+    .order("date", { ascending: false })
+    .limit(PENDING_LIMIT);
+  if (error) throw new Error(`Error cargando pendientes: ${error.message}`);
+  return (data ?? []).map(normalizeTransaction);
+}
+
+/**
+ * Cuántas pendientes hay y cuándo entró la más reciente — lo único que la
+ * campanita necesita saber de ellas.
+ *
+ * Existe para que `getAttentionItems()` no tenga que cargar el historial
+ * entero solo para filtrar las no confirmadas (era el mismo desperdicio que
+ * tenía /transactions). `newestCreatedAt` es lo que decide si un aviso
+ * descartado vuelve a aparecer, así que se ordena por `created_at` y no por
+ * `date`: una transacción con fecha vieja puede haber entrado hoy.
+ */
+export async function getPendingSummary(): Promise<{
+  count: number;
+  newestCreatedAt: string | null;
+}> {
+  if (!isSupabaseConfigured()) {
+    const pending = MOCK_TRANSACTIONS.filter((t) => !t.confirmed && !t.deleted_at);
+    const newest = pending.reduce<string | null>(
+      (max, t) => (max === null || t.created_at > max ? t.created_at : max),
+      null,
+    );
+    return { count: pending.length, newestCreatedAt: newest };
+  }
+
+  const userId = await requireUserId();
+  const supabase = getSupabaseAdmin();
+  const [countResult, newestResult] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("confirmed", false)
+      .is("deleted_at", null),
+    supabase
+      .from("transactions")
+      .select("created_at")
+      .eq("user_id", userId)
+      .eq("confirmed", false)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (countResult.error) {
+    throw new Error(`Error contando pendientes: ${countResult.error.message}`);
+  }
+  if (newestResult.error) {
+    throw new Error(`Error cargando pendientes: ${newestResult.error.message}`);
+  }
+  return {
+    count: countResult.count ?? 0,
+    newestCreatedAt: newestResult.data?.created_at ?? null,
+  };
+}
+
 export async function getTransactionById(id: string): Promise<Transaction | null> {
   if (!isSupabaseConfigured()) {
     return MOCK_TRANSACTIONS.find((t) => t.id === id && !t.deleted_at) ?? null;
@@ -542,16 +630,15 @@ export async function getAttentionItems(): Promise<AttentionItem[]> {
     }
   }
 
-  const [budgets, transactions, home] = await Promise.all([
+  const [budgets, pending, home] = await Promise.all([
     getBudgetsForMonth(now),
-    getTransactions(),
+    getPendingSummary(),
     getHomeCurrency(),
   ]);
 
   // Pendientes agrupadas en UN aviso — revisar la lista es una sola acción.
-  const pending = transactions.filter((t) => !t.confirmed);
-  if (pending.length > 0) {
-    const newest = pending.reduce((a, b) => (a.created_at > b.created_at ? a : b)).created_at;
+  if (pending.count > 0 && pending.newestCreatedAt !== null) {
+    const newest = pending.newestCreatedAt;
     const dismissedAt = dismissals.get("pending");
     // Reaparece solo si hay una pendiente MÁS NUEVA que la del descarte
     if (dismissedAt === undefined || (dismissedAt !== null && newest > dismissedAt)) {
@@ -559,9 +646,9 @@ export async function getAttentionItems(): Promise<AttentionItem[]> {
         id: "pending",
         icon: "⏳",
         title:
-          pending.length === 1
+          pending.count === 1
             ? "Tienes 1 transacción sin confirmar"
-            : `Tienes ${pending.length} transacciones sin confirmar`,
+            : `Tienes ${pending.count} transacciones sin confirmar`,
         detail: "Toca para revisarlas y categorizarlas",
         href: "/transactions?filter=pendientes",
         kind: "pending",
