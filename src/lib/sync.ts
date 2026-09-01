@@ -1,5 +1,6 @@
 import "server-only";
 import { GmailAuthError, fetchBankEmails } from "./gmail";
+import { reportIssue } from "./monitoring";
 import { isIgnorableBankEmail, parseBankEmail, sendersForBanks } from "./bank-parser";
 import { suggestCategory } from "./gemini";
 import { getSupabaseAdmin } from "./supabase";
@@ -203,7 +204,26 @@ export async function runSyncForGmailAddress(email: string): Promise<SyncResult>
   if (!account || !account.sync_enabled) {
     return { synced: 0, errors: [] }; // dirección desconocida o sync apagado: ignora
   }
-  return runSyncForUser(account.user_id, undefined, { notify: true });
+  const result = await runSyncForUser(account.user_id, undefined, { notify: true });
+  await reportSyncErrors("sync automático (webhook)", result);
+  return result;
+}
+
+/**
+ * Avisa si un sync AUTOMÁTICO dejó errores. Solo los automáticos: el manual
+ * ya le enseña un toast al usuario, que está mirando la pantalla.
+ *
+ * Sin esto, un banco que cambia el formato de sus correos deja de importar
+ * transacciones en silencio — los errores se acumulan en `SyncResult.errors`
+ * y se devuelven en una respuesta JSON que nadie abre.
+ */
+async function reportSyncErrors(context: string, result: SyncResult): Promise<void> {
+  if (result.errors.length === 0) return;
+  await reportIssue({
+    context,
+    message: `${result.errors.length} correo(s) no se pudieron procesar (${result.synced} sincronizados).`,
+    details: result.errors,
+  });
 }
 
 /** Sincroniza todos los usuarios con Gmail vinculado (GET /api/sync). */
@@ -225,5 +245,7 @@ export async function runSyncAll(newerThanDays?: number): Promise<SyncResult> {
       errors.push(`[${account.email}] ${err instanceof Error ? err.message : "Error"}`);
     }
   }
-  return { synced, errors };
+  const result = { synced, errors };
+  await reportSyncErrors("sync de todos los usuarios", result);
+  return result;
 }

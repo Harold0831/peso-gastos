@@ -392,6 +392,38 @@ sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
   Antes del delete se revoca el refresh token en Google (`revokeRefreshToken`,
   fallo suave): borrar la fila quita NUESTRO acceso, pero el consentimiento
   seguiría vivo en la cuenta del usuario.
+- **Exportar a CSV** (`GET /api/export` + `lib/csv.ts`): los datos de un
+  usuario solo viven en la base de datos de quien despliega la instancia, así
+  que sin esto un borrado accidental se lleva años de historial; además es lo
+  que la política de privacidad promete sobre acceder a tus datos.
+  `getAllTransactionsForExport()` es la ÚNICA lectura sin acotar por mes ni
+  límite, a propósito: el punto es llevarse todo, y no alimenta ninguna
+  pantalla (va a un archivo y se descarta), así que no aplica lo del payload
+  RSC de /transactions. Tres detalles que parecen menores y no lo son: el CSV
+  empieza con **BOM** (sin él Excel en Windows abre el archivo como ANSI y
+  destroza los acentos: "Alimentación" → "AlimentaciÃ³n"), el escapado sigue
+  RFC 4180 (los nombres de comercio traen comas — "NACIONAL, S.A." — y sin
+  entrecomillar desplazan todas las columnas de esa fila), y las fechas van
+  como `YYYY-MM-DD HH:MM` en **AST**, no en ISO/UTC (Excel no reconoce el ISO
+  con `Z` como fecha, y la hora UTC no es la que el usuario vivió). En la UI
+  es un `<a download>` normal y no un fetch: el navegador gestiona la descarga
+  solo y funciona igual en iOS. Funciona en modo demo (exporta los mock)
+  porque es una LECTURA — los errores de modo demo son para las mutaciones.
+- **Monitoreo** (`lib/monitoring.ts`, `MONITORING_WEBHOOK_URL`): cuando un
+  banco cambia el formato de sus correos, el parser deja de reconocerlos y las
+  transacciones **dejan de aparecer en silencio** — no hay excepción,
+  `SyncResult.errors` se llena y se devuelve en un JSON que nadie lee (es
+  exactamente el bug de los ~300 correos de `qik.do` que pasó un año sin que
+  nadie lo notara). `reportIssue()` manda esos errores a un webhook entrante
+  de Discord o Slack. Es un `fetch` y no un SDK de errores por coherencia con
+  el resto: sin dependencias nuevas ni peso en el cold start. Manda `content`
+  Y `text` en el mismo body para que el mismo webhook sirva en Discord y en
+  Slack. Solo se avisa de los syncs AUTOMÁTICOS (webhook/cron): el manual ya
+  le enseña un toast al usuario, que está mirando. Throttle de 1 aviso/hora
+  por contexto reusando `check_rate_limit()` — un banco roto falla en CADA
+  sync y serían decenas de notificaciones diciendo lo mismo. Todo opcional y
+  con fallo suave: sin la env var no se manda nada, y un aviso que falla nunca
+  tumba el sync que lo estaba reportando.
 - **Rate limiting** (`rate_limits` + `check_rate_limit()`, migración `0014`):
   el contador vive en Postgres, NO en memoria — la app corre en funciones
   serverless y cada petición puede caer en una instancia distinta, así que un
@@ -581,6 +613,7 @@ Project Settings → Environment Variables.
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push (opcional): sin ellas la sección "Notificaciones" del perfil no aparece y nada más cambia               | `npx web-push generate-vapid-keys`  |
 | `VAPID_CONTACT_EMAIL`                                | Contacto que los servicios de push pueden usar si hay un problema con tus envíos (opcional; default placeholder) | Tu email                            |
 | `NEXT_PUBLIC_CONTACT_EMAIL`                          | Correo de contacto que se muestra en /privacy y /terms (Google exige un contacto en la política)                 | Tu email                            |
+| `MONITORING_WEBHOOK_URL`                             | Webhook (Discord/Slack) para avisos de fallos del sync automático (opcional; sin ella no se manda nada)          | Webhook entrante de tu servidor     |
 
 ## Configurar Google (login + Gmail multi-usuario)
 

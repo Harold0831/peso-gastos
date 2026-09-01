@@ -540,6 +540,24 @@ export function ProfileClient({
         )}
       </section>
 
+      {/* Exportar datos */}
+      <section className={sectionClass}>
+        <h2 className={labelClass}>Tus datos</h2>
+        <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">
+          Descarga todas tus transacciones en un archivo CSV que puedes abrir en Excel o Google
+          Sheets. Tuyas, cuando quieras.
+        </p>
+        {/* Un enlace normal y no un fetch: el navegador gestiona la descarga
+            solo, con su barra de progreso, y funciona igual en iOS. */}
+        <a
+          href="/api/export"
+          download
+          className="mt-3 block w-full rounded-btn border border-line bg-surface py-3 text-center text-[13px] font-bold text-ink"
+        >
+          Descargar mis transacciones (CSV)
+        </a>
+      </section>
+
       {/* Feedback */}
       <section className={sectionClass}>
         <h2 className={labelClass}>¿Qué mejorarías de Peso?</h2>
