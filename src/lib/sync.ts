@@ -1,7 +1,12 @@
 import "server-only";
 import { GmailAuthError, fetchBankEmails } from "./gmail";
 import { reportIssue } from "./monitoring";
-import { isIgnorableBankEmail, parseBankEmail, sendersForBanks } from "./bank-parser";
+import {
+  bankNameForSender,
+  isIgnorableBankEmail,
+  parseBankEmail,
+  sendersForBanks,
+} from "./bank-parser";
 import { suggestCategory } from "./gemini";
 import { getSupabaseAdmin } from "./supabase";
 import { decryptToken } from "./crypto";
@@ -122,7 +127,11 @@ export async function runSyncForUser(
       // Estados de cuenta, códigos CASH creados/vencidos, etc.: no son
       // transacciones y no representan un error de parseo.
       if (!isIgnorableBankEmail(email.from, email.subject, email.body)) {
-        errors.push(`No se pudo parsear el correo ${email.id} ("${email.subject}")`);
+        // El nombre del banco va primero: es lo que decide qué parser hay que
+        // mirar cuando llega el aviso al webhook.
+        errors.push(
+          `[${bankNameForSender(email.from)}] "${email.subject}" — no se pudo parsear (correo ${email.id})`,
+        );
       }
       continue;
     }

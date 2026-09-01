@@ -112,6 +112,17 @@ export function parseBankEmail(
   return bankForSender(from)?.parse(subject, body, receivedAt) ?? null;
 }
 
+/**
+ * Nombre del banco de un remitente, para los avisos de monitoreo.
+ *
+ * Sin esto, el aviso decía solo el id del correo y su asunto — para saber qué
+ * parser tocar había que ir a mirar el código banco por banco. El nombre es
+ * lo primero que hace falta cuando llega la notificación.
+ */
+export function bankNameForSender(from: string): string {
+  return bankForSender(from)?.name ?? "remitente desconocido";
+}
+
 /** true si el correo es ruido esperado del banco (no reportar como error). */
 export function isIgnorableBankEmail(from: string, subject: string, body: string): boolean {
   const bank = bankForSender(from);
