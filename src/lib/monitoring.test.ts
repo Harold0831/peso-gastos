@@ -28,10 +28,14 @@ describe("formatIssue", () => {
     expect(texto).toContain("y 15 más");
   });
 
-  it("nunca pasa del límite de longitud del webhook", () => {
+  it("nunca pasa del límite de longitud de Discord", () => {
+    // Discord rechaza los mensajes de más de 2000 caracteres. Importa desde
+    // que los avisos de parseo llevan el esqueleto del correo (~35 líneas):
+    // pasarse significaría no recibir el aviso, no recibirlo recortado.
+    const DISCORD_MAX = 2000;
     const details = Array.from({ length: 10 }, () => "x".repeat(500));
     const texto = formatIssue({ context: "sync", message: "largo", details });
-    expect(texto.length).toBeLessThanOrEqual(1500);
+    expect(texto.length).toBeLessThan(DISCORD_MAX);
     expect(texto.endsWith("…")).toBe(true);
   });
 

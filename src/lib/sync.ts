@@ -7,6 +7,8 @@ import {
   parseBankEmail,
   sendersForBanks,
 } from "./bank-parser";
+import { describeEmailStructure, labelsPresent } from "./email-structure";
+import { htmlToText } from "./qik-parser";
 import { suggestCategory } from "./gemini";
 import { getSupabaseAdmin } from "./supabase";
 import { decryptToken } from "./crypto";
@@ -121,17 +123,36 @@ export async function runSyncForUser(
   };
 
   let synced = 0;
+  // Asuntos cuyo esqueleto ya se adjuntó en esta corrida (ver más abajo).
+  const described = new Set<string>();
   for (const email of newEmails) {
     const parsed = parseBankEmail(email.from, email.subject, email.body, email.receivedAt);
     if (!parsed) {
       // Estados de cuenta, códigos CASH creados/vencidos, etc.: no son
       // transacciones y no representan un error de parseo.
       if (!isIgnorableBankEmail(email.from, email.subject, email.body)) {
-        // El nombre del banco va primero: es lo que decide qué parser hay que
-        // mirar cuando llega el aviso al webhook.
-        errors.push(
-          `[${bankNameForSender(email.from)}] "${email.subject}" — no se pudo parsear (correo ${email.id})`,
-        );
+        const bank = bankNameForSender(email.from);
+        const encabezado = `[${bank}] "${email.subject}" — no se pudo parsear (correo ${email.id})`;
+
+        // El esqueleto solo la PRIMERA vez que falla ese asunto en esta
+        // corrida: tres "Notificación de Consumo" tienen la misma estructura,
+        // y repetirla se comería el límite de tamaño del webhook sin aportar
+        // nada. Las siguientes van con una línea y ya.
+        const clave = `${bank}::${email.subject}`;
+        if (described.has(clave)) {
+          errors.push(encabezado);
+        } else {
+          described.add(clave);
+          const text = /<[a-z][\s\S]*>/i.test(email.body) ? htmlToText(email.body) : email.body;
+          errors.push(
+            [
+              encabezado,
+              `Etiquetas encontradas: ${labelsPresent(text).join(", ") || "ninguna"}`,
+              "Estructura (valores ocultos):",
+              ...describeEmailStructure(text),
+            ].join("\n"),
+          );
+        }
       }
       continue;
     }

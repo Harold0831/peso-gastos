@@ -30,7 +30,12 @@ export interface Issue {
 }
 
 const MAX_DETAILS = 10;
-const MAX_LENGTH = 1500;
+/**
+ * Discord corta los mensajes a 2000 caracteres (Slack aguanta más), así que
+ * el tope va justo por debajo. Importa desde que los avisos de parseo
+ * incluyen el esqueleto del correo: antes eran una línea y ahora son treinta.
+ */
+const MAX_LENGTH = 1900;
 
 /**
  * Cada aviso repetido cuesta una notificación en el teléfono de alguien. Un
