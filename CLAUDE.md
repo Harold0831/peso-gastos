@@ -125,7 +125,22 @@ design/                      # Referencias visuales (no es código de la app)
   `data.ts`/`actions.ts` filtra por `requireUserId()` (el user_id del JWT
   de sesión) — no hay RLS policies porque el único cliente es el servidor
   con service role; el aislamiento entre usuarios vive en el código, así
-  que cualquier query nueva DEBE incluir el filtro de user_id. Las
+  que cualquier query nueva DEBE incluir el filtro de user_id.
+  **Eso lo vigilan `data-isolation.test.ts` y `actions-isolation.test.ts`**,
+  que son la única red bajo esa cuerda: un `createFakeSupabase()` (Proxy que
+  GRABA las consultas en vez de ejecutarlas, así que no hace falta base de
+  datos) recorre TODAS las funciones exportadas de `data.ts` y las 34 server
+  actions, y falla si alguna toca una tabla por usuario sin acotarla — por
+  `.eq("user_id", …)`, por el `.or(…)` de categorías, o porque el payload del
+  insert lleva el `user_id`. Tres guardas evitan que el test se vuelva
+  decorativo: (1) **cobertura** — si exportas una función nueva y no la
+  registras, falla; (2) **tablas** — si tocas una tabla que no está
+  clasificada como por-usuario o global, falla, así que una migración nueva
+  obliga a decidir de qué tipo es; (3) **anti-vacío** — cada action debe
+  llegar de verdad a Supabase, porque una entrada que Zod rechace antes de
+  consultar se vería como "aislamiento correcto" sin haber probado nada.
+  Verificado quitando a mano el filtro de `getGoals` y de `deleteGoal`: ambos
+  tests fallan nombrando la función y la tabla. Las
   categorías globales (seed, `user_id` null) son compartidas y de solo
   lectura; cada usuario puede además crear las suyas (ver Categorías).
 - **Lecturas**: server components → `lib/data.ts` → Supabase con service
