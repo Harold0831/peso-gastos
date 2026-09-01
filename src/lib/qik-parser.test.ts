@@ -237,6 +237,10 @@ describe("isIgnorableQikEmail", () => {
     expect(isIgnorableQikEmail("¡Tu fecha de pago se acerca!")).toBe(true);
   });
 
+  it("ignora la variante 'Recuerda realizar tu pago' (visto en producción, 2026-09-01)", () => {
+    expect(isIgnorableQikEmail("Recuerda realizar tu pago")).toBe(true);
+  });
+
   it("no ignora un pago de servicio realizado", () => {
     expect(isIgnorableQikEmail("Pago de servicio realizado")).toBe(false);
   });
@@ -335,6 +339,30 @@ describe("parseQikEmail (integración con correos reales)", () => {
     expect(result!.amount).toBe(124.76);
     expect(result!.date.toISOString()).toBe("2025-07-22T15:41:00.000Z");
     expect(result!.available_balance).toBeNull();
+  });
+
+  // OJO: a diferencia de los demás tests de este archivo, este NO viene de un
+  // correo real capturado — es sintético, armado a partir del ESQUELETO que
+  // reportó el monitoreo (etiquetas y longitudes, nunca el contenido; ver
+  // email-structure.ts) para una tarjeta de CRÉDITO reportada el 2026-09-01.
+  // Fija el comportamiento que se espera del fallback a "Comercio" mientras
+  // llega el correo real para confirmarlo con un fixture de verdad.
+  it("parsea una compra con tarjeta de crédito usando 'Comercio' (sin confirmar con correo real)", () => {
+    const html = `
+<html><body>
+<p>Se hizo una transacción con tu tarjeta de crédito Qik</p>
+<table>
+  <tr><td>Comercio</td><td><strong>COLMADO EL VECINO</strong></td></tr>
+  <tr><td>Fecha y hora</td><td><strong>09-01-2026 08:00 AM (AST)</strong></td></tr>
+  <tr><td>Monto</td><td><b>RD$ 500.00</b></td></tr>
+  <tr><td>Balance Disponible</td><td><strong>RD$ 9,000.00</strong></td></tr>
+</table>
+</body></html>
+`;
+    const result = parseQikEmail("Se hizo una transacción con tu tarjeta de crédito Qik", html);
+    expect(result).not.toBeNull();
+    expect(result!.merchant).toBe("COLMADO EL VECINO");
+    expect(result!.amount).toBe(500);
   });
 
   it("ignora una compra declinada (la plantilla vieja no la marca en el asunto)", () => {

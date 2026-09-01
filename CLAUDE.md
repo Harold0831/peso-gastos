@@ -538,7 +538,12 @@ Tipos de correo transaccionales confirmados contra la bandeja real:
    correo (ambas soportadas):
    - **Nueva (2026)**: campos "Localidad", "Fecha y hora"
      (`07-04-2026 01:11 PM (AST)`), "Monto" (con prefijo `RD$`), "Balance
-     Disponible", "Tarjeta Débito" (`49***...3326` → últimos 4 dígitos).
+     Disponible", "Tarjeta Débito" (`49***...3326` → últimos 4 dígitos). Las
+     compras con tarjeta de **crédito** usan "Comercio" en vez de
+     "Localidad"/"Lugar" — visto en producción el 2026-09-01, **sin confirmar
+     todavía contra el correo completo** (el monitoreo solo entrega su
+     esqueleto, nunca el contenido — ver § Monitoreo). Si sigue fallando para
+     tarjetas de crédito, hace falta el correo real.
    - **Vieja (2025)**: mismos campos pero el comercio es "Lugar" (no
      "Localidad"), el monto viene sin el prefijo `RD` (solo `$ 20.00`), no
      hay "Balance Disponible", y agrega "Estatus" (`Aprobada`/`Declinado`).
@@ -554,7 +559,9 @@ ignoran en silencio vía `isIgnorableQikEmail()` (recibe subject y,
 opcionalmente, el body — necesario para detectar compras declinadas, que
 comparten asunto con las aprobadas):
 
-- Código CASH creado/vencido, estados de cuenta, recordatorio de fecha de pago.
+- Código CASH creado/vencido, estados de cuenta, recordatorio de fecha de pago
+  (Qik lo manda con al menos dos redacciones distintas: "¡Tu fecha de pago se
+  acerca!" y "Recuerda realizar tu pago").
 - **"Contraseña de uso único para transacciones electrónicas"** — OTP para
   autorizar una compra, no es la transacción en sí.
 - **"Cardholder Services Alert"** — alerta de límite de tarjeta (en
