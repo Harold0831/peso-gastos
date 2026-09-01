@@ -418,7 +418,21 @@ sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
   de Discord o Slack. Es un `fetch` y no un SDK de errores por coherencia con
   el resto: sin dependencias nuevas ni peso en el cold start. Manda `content`
   Y `text` en el mismo body para que el mismo webhook sirva en Discord y en
-  Slack. Solo se avisa de los syncs AUTOMÁTICOS (webhook/cron): el manual ya
+  Slack. Cada error de parseo lleva **el banco**, **el buzón** al que llegó el
+  correo y el **esqueleto del correo** (`email-structure.ts`): el aviso
+  original solo decía el asunto, y como el webhook dispara para el buzón que
+  CAMBIÓ y no para el de quien opera la instancia, el correo casi siempre es
+  de otra persona — sin saber de quién era ni cómo se veía, el monitoreo era
+  un callejón sin salida. El esqueleto muestra las etiquetas conocidas
+  literales y sustituye TODO lo demás por marcadores (`‹monto›`, `‹texto 27›`)
+  porque el cuerpo es una notificación bancaria ajena y la política de
+  privacidad promete que no se comparte — para arreglar un parser hacen falta
+  las etiquetas y su orden, no los valores. La lista de etiquetas es BLANCA a
+  propósito: la heurística tentadora ("muestra lo que no lleve dígitos")
+  filtraría los nombres de comercio, que no llevan. El esqueleto se adjunta
+  una sola vez por asunto y corrida (tres correos del mismo tipo comparten
+  estructura) y el tope del mensaje son 1900 caracteres, por debajo de los
+  2000 que admite Discord. Solo se avisa de los syncs AUTOMÁTICOS: el manual ya
   le enseña un toast al usuario, que está mirando. Throttle de 1 aviso/hora
   por contexto reusando `check_rate_limit()` — un banco roto falla en CADA
   sync y serían decenas de notificaciones diciendo lo mismo. Todo opcional y

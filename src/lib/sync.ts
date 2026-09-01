@@ -1,7 +1,14 @@
 import "server-only";
 import { GmailAuthError, fetchBankEmails } from "./gmail";
 import { reportIssue } from "./monitoring";
-import { isIgnorableBankEmail, parseBankEmail, sendersForBanks } from "./bank-parser";
+import {
+  bankNameForSender,
+  isIgnorableBankEmail,
+  parseBankEmail,
+  sendersForBanks,
+} from "./bank-parser";
+import { describeEmailStructure, labelsPresent } from "./email-structure";
+import { htmlToText } from "./qik-parser";
 import { suggestCategory } from "./gemini";
 import { getSupabaseAdmin } from "./supabase";
 import { decryptToken } from "./crypto";
@@ -116,13 +123,36 @@ export async function runSyncForUser(
   };
 
   let synced = 0;
+  // Asuntos cuyo esqueleto ya se adjuntó en esta corrida (ver más abajo).
+  const described = new Set<string>();
   for (const email of newEmails) {
     const parsed = parseBankEmail(email.from, email.subject, email.body, email.receivedAt);
     if (!parsed) {
       // Estados de cuenta, códigos CASH creados/vencidos, etc.: no son
       // transacciones y no representan un error de parseo.
       if (!isIgnorableBankEmail(email.from, email.subject, email.body)) {
-        errors.push(`No se pudo parsear el correo ${email.id} ("${email.subject}")`);
+        const bank = bankNameForSender(email.from);
+        const encabezado = `[${bank}] "${email.subject}" — no se pudo parsear (correo ${email.id})`;
+
+        // El esqueleto solo la PRIMERA vez que falla ese asunto en esta
+        // corrida: tres "Notificación de Consumo" tienen la misma estructura,
+        // y repetirla se comería el límite de tamaño del webhook sin aportar
+        // nada. Las siguientes van con una línea y ya.
+        const clave = `${bank}::${email.subject}`;
+        if (described.has(clave)) {
+          errors.push(encabezado);
+        } else {
+          described.add(clave);
+          const text = /<[a-z][\s\S]*>/i.test(email.body) ? htmlToText(email.body) : email.body;
+          errors.push(
+            [
+              encabezado,
+              `Etiquetas encontradas: ${labelsPresent(text).join(", ") || "ninguna"}`,
+              "Estructura (valores ocultos):",
+              ...describeEmailStructure(text),
+            ].join("\n"),
+          );
+        }
       }
       continue;
     }
@@ -205,7 +235,15 @@ export async function runSyncForGmailAddress(email: string): Promise<SyncResult>
     return { synced: 0, errors: [] }; // dirección desconocida o sync apagado: ignora
   }
   const result = await runSyncForUser(account.user_id, undefined, { notify: true });
-  await reportSyncErrors("sync automático (webhook)", result);
+  // La dirección va en el aviso porque sin ella el monitoreo es un callejón
+  // sin salida: el correo que falló es de OTRA persona (el webhook dispara
+  // para el buzón que cambió, no para el de quien recibe la alerta), así que
+  // sin saber de quién es no hay forma de pedirle la muestra que hace falta
+  // para arreglar el parser.
+  await reportSyncErrors("sync automático (webhook)", {
+    ...result,
+    errors: result.errors.map((e) => `[${email.toLowerCase()}] ${e}`),
+  });
   return result;
 }
 
