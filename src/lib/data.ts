@@ -120,6 +120,32 @@ export async function getTransactions(options?: {
 }
 
 /**
+ * Todas las transacciones del usuario, de la más nueva a la más vieja, para
+ * la exportación a CSV (`GET /api/export`).
+ *
+ * Es la ÚNICA lectura sin acotar por mes ni por límite, y es a propósito: el
+ * punto de exportar es llevarse el historial completo. No se usa en ninguna
+ * pantalla — se transmite a un archivo y se descarta — así que el tamaño del
+ * payload RSC que preocupaba en /transactions no aplica aquí.
+ */
+export async function getAllTransactionsForExport(): Promise<Transaction[]> {
+  if (!isSupabaseConfigured()) {
+    return MOCK_TRANSACTIONS.filter((t) => !t.deleted_at).sort((a, b) =>
+      b.date.localeCompare(a.date),
+    );
+  }
+
+  const { data, error } = await getSupabaseAdmin()
+    .from("transactions")
+    .select("*")
+    .eq("user_id", await requireUserId())
+    .is("deleted_at", null)
+    .order("date", { ascending: false });
+  if (error) throw new Error(`Error exportando transacciones: ${error.message}`);
+  return (data ?? []).map(normalizeTransaction);
+}
+
+/**
  * Tope de la cola de "Por confirmar". En la práctica son pocas (el usuario
  * las confirma y dejan de estar pendientes), pero alguien que nunca confirme
  * podría acumular miles y no tiene sentido mandarlas todas al navegador para

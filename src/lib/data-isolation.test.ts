@@ -95,6 +95,7 @@ async function registrarLecturas() {
   const d = await import("./data");
   Object.assign(LECTURAS, {
     getTransactions: () => d.getTransactions({ month: MES }),
+    getAllTransactionsForExport: () => d.getAllTransactionsForExport(),
     getPendingTransactions: () => d.getPendingTransactions(),
     getPendingSummary: () => d.getPendingSummary(),
     getTransactionById: () => d.getTransactionById("tx-1"),
