@@ -99,7 +99,7 @@ export function DeleteAccountDialog({ open, onCancel }: { open: boolean; onCance
           <button
             onClick={handleDelete}
             disabled={pending || !matches}
-            className="flex-1 rounded-btn bg-expense py-3 text-[14px] font-bold text-white disabled:opacity-50"
+            className="flex-1 rounded-btn bg-expense-solid py-3 text-[14px] font-bold text-white disabled:opacity-50"
           >
             {pending ? "Eliminando…" : "Eliminar cuenta"}
           </button>

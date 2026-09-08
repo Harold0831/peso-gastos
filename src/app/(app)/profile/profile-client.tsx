@@ -19,6 +19,7 @@ import { merchantInitials } from "@/lib/format";
 import { useToast } from "@/components/toast";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DeleteAccountDialog } from "@/components/delete-account-dialog";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 interface ProfileClientProps {
   name: string;
@@ -267,7 +268,7 @@ export function ProfileClient({
             referrerPolicy="no-referrer"
           />
         ) : (
-          <span className="flex h-12 w-12 items-center justify-center rounded-pill bg-accent text-base font-semibold text-white">
+          <span className="flex h-12 w-12 items-center justify-center rounded-pill bg-accent-solid text-base font-semibold text-white">
             {merchantInitials(name)}
           </span>
         )}
@@ -297,7 +298,7 @@ export function ProfileClient({
             </div>
             <a
               href="/api/auth/google?consent=1"
-              className="mt-3 block w-full rounded-btn bg-accent py-3 text-center text-[13px] font-bold text-white"
+              className="mt-3 block w-full rounded-btn bg-accent-solid py-3 text-center text-[13px] font-bold text-white"
             >
               Reconectar Gmail
             </a>
@@ -311,7 +312,7 @@ export function ProfileClient({
             </p>
             <a
               href="/api/auth/google?consent=1"
-              className="mt-3 block w-full rounded-btn bg-accent py-3 text-center text-[13px] font-bold text-white"
+              className="mt-3 block w-full rounded-btn bg-accent-solid py-3 text-center text-[13px] font-bold text-white"
             >
               Vincular Gmail
             </a>
@@ -340,7 +341,7 @@ export function ProfileClient({
                   aria-pressed={active}
                   className={`rounded-pill border px-3.5 py-2 text-xs font-semibold transition ${
                     active
-                      ? "border-accent bg-accent text-white"
+                      ? "border-accent bg-accent-solid text-white"
                       : "border-line bg-surface text-ink"
                   }`}
                 >
@@ -383,7 +384,7 @@ export function ProfileClient({
               <button
                 onClick={enablePush}
                 disabled={pushBusy || demoMode}
-                className="mt-3 w-full rounded-btn bg-accent py-3 text-[13px] font-bold text-white disabled:opacity-50"
+                className="mt-3 w-full rounded-btn bg-accent-solid py-3 text-[13px] font-bold text-white disabled:opacity-50"
               >
                 {pushBusy ? "Activando…" : "Activar notificaciones"}
               </button>
@@ -433,7 +434,7 @@ export function ProfileClient({
               <button
                 onClick={handleSetPassword}
                 disabled={savingPw || newPw.length < 8 || demoMode}
-                className="flex-[1.5] rounded-btn bg-accent py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
+                className="flex-[1.5] rounded-btn bg-accent-solid py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
               >
                 {savingPw ? "Guardando…" : "Guardar contraseña"}
               </button>
@@ -457,12 +458,21 @@ export function ProfileClient({
             <button
               onClick={() => setPwOpen(true)}
               disabled={demoMode}
-              className="mt-3 w-full rounded-btn bg-accent py-3 text-[13px] font-bold text-white disabled:opacity-50"
+              className="mt-3 w-full rounded-btn bg-accent-solid py-3 text-[13px] font-bold text-white disabled:opacity-50"
             >
               {passwordSet ? "Cambiar contraseña" : "Crear contraseña"}
             </button>
           </>
         )}
+      </section>
+
+      {/* Apariencia */}
+      <section className={sectionClass}>
+        <h2 className={labelClass}>Apariencia</h2>
+        <p className="mt-3 text-[13px] leading-relaxed text-ink-muted">
+          &quot;Sistema&quot; sigue el modo claro/oscuro de tu iPhone.
+        </p>
+        <ThemeToggle />
       </section>
 
       {/* Face ID */}
@@ -502,7 +512,7 @@ export function ProfileClient({
             <button
               onClick={activateFaceId}
               disabled={registering || demoMode}
-              className="mt-3 w-full rounded-btn bg-accent py-3 text-[13px] font-bold text-white disabled:opacity-50"
+              className="mt-3 w-full rounded-btn bg-accent-solid py-3 text-[13px] font-bold text-white disabled:opacity-50"
             >
               {registering ? "Activando…" : "Activar Face ID"}
             </button>
@@ -581,7 +591,7 @@ export function ProfileClient({
             <button
               onClick={handleSendFeedback}
               disabled={sending || !feedback.trim() || demoMode}
-              className="mt-2 w-full rounded-btn bg-accent py-3 text-[13px] font-bold text-white disabled:opacity-50"
+              className="mt-2 w-full rounded-btn bg-accent-solid py-3 text-[13px] font-bold text-white disabled:opacity-50"
             >
               {sending ? "Enviando…" : "Enviar comentario"}
             </button>

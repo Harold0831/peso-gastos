@@ -61,12 +61,21 @@ export function merchantInitials(name: string): string {
   return (words[0][0] + words[1][0]).toUpperCase();
 }
 
-/** Color muted determinístico para el avatar de un comercio. */
-export function merchantColor(name: string): string {
-  const palette = ["#E8EEF7", "#F0EBE3", "#EFE8E0", "#E3EEE6", "#EDE8EE", "#EAEEE8", "#E8EAEE"];
+/** Cuántos tintes de avatar hay definidos (.avatar-tint-N en globals.css). */
+export const AVATAR_TINTS = 7;
+
+/**
+ * Tinte determinístico (0..AVATAR_TINTS-1) para el avatar de un comercio.
+ *
+ * Devuelve un ÍNDICE y no un color: el hex tendría que ser el mismo en los
+ * dos temas, y los pasteles claros del tema claro se ven como manchas
+ * brillantes sobre fondo oscuro. Con el índice, el color real lo pone
+ * `.avatar-tint-N` en globals.css y cambia con el tema.
+ */
+export function merchantTint(name: string): number {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
   }
-  return palette[hash % palette.length];
+  return hash % AVATAR_TINTS;
 }

@@ -113,7 +113,7 @@ export function AdjustBalanceDialog({
               <button
                 onClick={save}
                 disabled={saving || demoMode}
-                className="flex-1 rounded-btn bg-accent py-3 text-[13px] font-bold text-white disabled:opacity-60"
+                className="flex-1 rounded-btn bg-accent-solid py-3 text-[13px] font-bold text-white disabled:opacity-60"
               >
                 {saving ? "Guardando…" : "Guardar"}
               </button>

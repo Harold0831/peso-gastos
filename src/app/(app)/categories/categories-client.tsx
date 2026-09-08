@@ -449,7 +449,7 @@ function CategoryForm({
           type="button"
           onClick={handleSave}
           disabled={saving || !name.trim() || demoMode}
-          className="flex-[1.5] rounded-btn bg-accent py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
+          className="flex-[1.5] rounded-btn bg-accent-solid py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
         >
           {saving ? "Guardando…" : mode === "edit" ? "Guardar cambios" : "Crear categoría"}
         </button>

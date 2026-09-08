@@ -111,7 +111,7 @@ export function NewTransactionForm({
               className={`flex-1 rounded-[9px] py-2.5 text-[13px] font-bold transition ${
                 type === value
                   ? value === "expense"
-                    ? "bg-expense text-white"
+                    ? "bg-expense-solid text-white"
                     : "bg-income text-white"
                   : "text-ink-muted"
               }`}
@@ -148,7 +148,7 @@ export function NewTransactionForm({
                     type="button"
                     onClick={() => setValue("currency", value)}
                     className={`rounded-pill px-3 py-1 text-[11px] font-bold transition ${
-                      currency === value ? "bg-accent text-white" : "text-ink-muted"
+                      currency === value ? "bg-accent-solid text-white" : "text-ink-muted"
                     }`}
                   >
                     {currencySymbol(value)}
@@ -199,7 +199,7 @@ export function NewTransactionForm({
                 onClick={() => setValue("category", name, { shouldValidate: true })}
                 className={`shrink-0 rounded-pill border px-3.5 py-2 text-xs font-semibold transition ${
                   category === name
-                    ? "border-accent bg-accent text-white"
+                    ? "border-accent bg-accent-solid text-white"
                     : "border-line bg-surface text-ink"
                 }`}
               >
@@ -229,7 +229,7 @@ export function NewTransactionForm({
                   }
                   className={`shrink-0 rounded-pill border px-3.5 py-2 text-xs font-semibold transition ${
                     cardLast4 === c.last4
-                      ? "border-accent bg-accent text-white"
+                      ? "border-accent bg-accent-solid text-white"
                       : "border-line bg-surface text-ink"
                   }`}
                 >
@@ -257,7 +257,7 @@ export function NewTransactionForm({
         <button
           type="submit"
           disabled={saving}
-          className="mb-4 w-full rounded-[14px] bg-accent py-4 text-[15px] font-bold tracking-tight text-white shadow-[0_4px_12px_rgba(37,99,235,0.25)] transition active:scale-[0.99] disabled:opacity-60"
+          className="mb-4 w-full rounded-[14px] bg-accent-solid py-4 text-[15px] font-bold tracking-tight text-white shadow-accent transition active:scale-[0.99] disabled:opacity-60"
         >
           {saving ? "Guardando…" : "Guardar transacción"}
         </button>

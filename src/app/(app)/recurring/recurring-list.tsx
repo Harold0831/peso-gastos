@@ -258,7 +258,7 @@ function NewRecurringForm({ categories, currency }: { categories: string[]; curr
                 onClick={() => setCategory((c) => (c === name ? "" : name))}
                 className={`rounded-pill border px-3 py-1.5 text-[11px] font-semibold transition ${
                   category === name
-                    ? "border-accent bg-accent text-white"
+                    ? "border-accent bg-accent-solid text-white"
                     : "border-line bg-surface text-ink"
                 }`}
               >
@@ -279,7 +279,7 @@ function NewRecurringForm({ categories, currency }: { categories: string[]; curr
         <button
           onClick={handleSave}
           disabled={saving || !name.trim()}
-          className="flex-1 rounded-btn bg-accent py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
+          className="flex-1 rounded-btn bg-accent-solid py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
         >
           {saving ? "Guardando…" : "Crear"}
         </button>

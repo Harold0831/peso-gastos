@@ -54,7 +54,7 @@ function EmptyState({
       <div className="mt-4 flex justify-center gap-2">
         <Link
           href="/transactions/new"
-          className="rounded-btn bg-accent px-4 py-2.5 text-[13px] font-bold text-white"
+          className="rounded-btn bg-accent-solid px-4 py-2.5 text-[13px] font-bold text-white"
         >
           + Agregar gasto
         </Link>
@@ -309,7 +309,7 @@ export function TxList({
                 {id === "pendientes" && pendingCount > 0 && (
                   <span
                     className={`min-w-4 rounded-lg px-1.5 py-px text-center text-[10px] font-bold ${
-                      active ? "bg-surface text-ink" : "bg-accent text-white"
+                      active ? "bg-surface text-ink" : "bg-accent-solid text-white"
                     }`}
                   >
                     {pendingCount}
@@ -334,7 +334,7 @@ export function TxList({
             <FilterIcon size={14} />
             Filtros
             {activeFilterCount > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-pill bg-accent px-1 text-[10px] font-bold text-white">
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-pill bg-accent-solid px-1 text-[10px] font-bold text-white">
                 {activeFilterCount}
               </span>
             )}
@@ -430,7 +430,7 @@ export function TxList({
                     onClick={() => setBulkCategory(name)}
                     className={`shrink-0 rounded-pill border px-3.5 py-2 text-xs font-semibold transition ${
                       active
-                        ? "border-accent bg-accent text-white"
+                        ? "border-accent bg-accent-solid text-white"
                         : "border-line bg-surface text-ink"
                     }`}
                   >
@@ -443,7 +443,7 @@ export function TxList({
             <button
               onClick={handleBulkConfirm}
               disabled={selectedIds.size === 0 || !bulkCategory || bulkSaving}
-              className="mb-3 w-full rounded-[14px] bg-accent py-3.5 text-[14px] font-bold tracking-tight text-white shadow-[0_4px_12px_rgba(37,99,235,0.25)] transition active:scale-[0.99] disabled:opacity-40"
+              className="mb-3 w-full rounded-[14px] bg-accent-solid py-3.5 text-[14px] font-bold tracking-tight text-white shadow-accent transition active:scale-[0.99] disabled:opacity-40"
             >
               {bulkSaving
                 ? "Guardando…"
@@ -513,7 +513,7 @@ function FiltersSheet({
   const hasActive = category !== null || card !== null;
   const chipClass = (active: boolean) =>
     `rounded-pill border px-3.5 py-2 text-xs font-semibold transition ${
-      active ? "border-accent bg-accent text-white" : "border-line bg-surface text-ink"
+      active ? "border-accent bg-accent-solid text-white" : "border-line bg-surface text-ink"
     }`;
 
   return (
@@ -589,7 +589,7 @@ function FiltersSheet({
         <div className="px-5 py-5">
           <button
             onClick={onClose}
-            className="w-full rounded-[14px] bg-accent py-3.5 text-[14px] font-bold tracking-tight text-white shadow-[0_4px_12px_rgba(37,99,235,0.25)] transition active:scale-[0.99]"
+            className="w-full rounded-[14px] bg-accent-solid py-3.5 text-[14px] font-bold tracking-tight text-white shadow-accent transition active:scale-[0.99]"
           >
             Ver {resultCount} {resultCount === 1 ? "resultado" : "resultados"}
           </button>

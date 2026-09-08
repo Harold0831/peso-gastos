@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Transaction } from "@/lib/types";
-import { formatSignedMoney, formatTime, merchantColor, merchantInitials } from "@/lib/format";
+import { formatSignedMoney, formatTime, merchantInitials, merchantTint } from "@/lib/format";
 
 interface TxRowProps {
   tx: Transaction;
@@ -24,7 +24,7 @@ export function TxRow({ tx, divider, selectable, selected, onToggleSelect }: TxR
         <span
           aria-hidden
           className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-pill border-2 transition ${
-            selected ? "border-accent bg-accent" : "border-line bg-surface"
+            selected ? "border-accent bg-accent-solid" : "border-line bg-surface"
           }`}
         >
           {selected && (
@@ -41,10 +41,9 @@ export function TxRow({ tx, divider, selectable, selected, onToggleSelect }: TxR
         </span>
       )}
       <div
-        className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-pill"
-        style={{ backgroundColor: merchantColor(tx.merchant) }}
+        className={`avatar-tint avatar-tint-${merchantTint(tx.merchant)} flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-pill`}
       >
-        <span className="text-xs font-bold text-[#3a3a44]">{merchantInitials(tx.merchant)}</span>
+        <span className="text-xs font-bold">{merchantInitials(tx.merchant)}</span>
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">

@@ -95,7 +95,7 @@ export default async function DashboardPage() {
       {/* Top bar */}
       <div className="flex items-center justify-between py-4">
         <Link href="/profile" className="flex items-center gap-3">
-          <span className="flex h-[38px] w-[38px] items-center justify-center rounded-pill bg-accent text-sm font-semibold tracking-wide text-white">
+          <span className="flex h-[38px] w-[38px] items-center justify-center rounded-pill bg-accent-solid text-sm font-semibold tracking-wide text-white">
             {merchantInitials(displayName)}
           </span>
           <span>
@@ -114,7 +114,7 @@ export default async function DashboardPage() {
         >
           <BellIcon />
           {attention.length > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-[17px] min-w-[17px] items-center justify-center rounded-pill border-[1.5px] border-surface bg-expense px-1 text-[9px] font-bold text-white">
+            <span className="absolute -right-1 -top-1 flex h-[17px] min-w-[17px] items-center justify-center rounded-pill border-[1.5px] border-surface bg-expense-solid px-1 text-[9px] font-bold text-white">
               {attention.length > 9 ? "9+" : attention.length}
             </span>
           )}

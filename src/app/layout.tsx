@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeScript } from "@/components/theme-script";
+import { THEME_COLOR } from "@/lib/theme";
 import { RegisterSW } from "@/components/register-sw";
 
 const inter = Inter({
@@ -29,10 +30,6 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f5f7" },
-    { media: "(prefers-color-scheme: dark)", color: "#0f0f0f" },
-  ],
 };
 
 export default function RootLayout({
@@ -43,6 +40,10 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
+        {/* Lo reescribe ThemeScript según el tema resuelto. Sin `media` a
+            propósito: la preferencia del usuario puede ir contra la del
+            sistema, así que el navegador no puede elegir solo. */}
+        <meta name="theme-color" content={THEME_COLOR.light} />
         <ThemeScript />
       </head>
       <body className={`${inter.variable} antialiased`}>

@@ -142,7 +142,7 @@ function GoalCard({ goal, currency }: { goal: SavingsGoal; currency: Currency })
             onClick={handleAmount}
             disabled={saving || !amount}
             className={`rounded-btn px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50 ${
-              withdrawing ? "bg-expense" : "bg-accent"
+              withdrawing ? "bg-expense-solid" : "bg-accent-solid"
             }`}
           >
             {saving ? "…" : withdrawing ? "Retirar" : "Abonar"}
@@ -364,7 +364,7 @@ function EditGoalDialog({
           <button
             onClick={handleSave}
             disabled={saving || !name.trim() || !target}
-            className="flex-1 rounded-btn bg-accent py-3 text-[13px] font-bold text-white disabled:opacity-60"
+            className="flex-1 rounded-btn bg-accent-solid py-3 text-[13px] font-bold text-white disabled:opacity-60"
           >
             {saving ? "Guardando…" : "Guardar"}
           </button>
@@ -490,7 +490,7 @@ function NewGoalForm({ currency }: { currency: Currency }) {
         <button
           onClick={handleSave}
           disabled={saving || !name || !target}
-          className="flex-1 rounded-btn bg-accent py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
+          className="flex-1 rounded-btn bg-accent-solid py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
         >
           {saving ? "Guardando…" : "Crear meta"}
         </button>

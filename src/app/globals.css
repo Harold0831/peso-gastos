@@ -1,29 +1,143 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+/* Variante `dark:` de Tailwind. Cubre los dos caminos por los que la app
+   puede estar oscura: la clase explícita (.dark, que pone ThemeScript
+   cuando el usuario elige "Oscuro") y el modo automático (el sistema está
+   en oscuro y el usuario no forzó "Claro" con .light). */
+@custom-variant dark {
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not(.light), :root:not(.light) *) {
+      @slot;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Paleta
+   ---------------------------------------------------------------------------
+   El tema oscuro NO es una paleta nueva: son los mismos colores de la app
+   reubicados sobre fondos oscuros. Dos reglas lo mantienen sobrio (nada de
+   neón):
+
+   1. Los cuatro colores de acento (accent/income/expense/warning) quedan
+      todos entre 5.0 y 5.3 de contraste sobre --card. Al estar igualados,
+      ninguno "grita" al lado de los otros.
+   2. Un color de marca no puede servir a la vez de texto sobre fondo oscuro
+      y de relleno con texto blanco encima: para llegar a 4.5 como texto hace
+      falta L ≥ 0.236, y para que el blanco encima llegue a 4.5 hace falta
+      L ≤ 0.183. Es imposible, así que los que se usan de las dos formas se
+      parten en dos tokens: --accent / --accent-solid y --expense /
+      --expense-solid. Los `-solid` NO cambian entre temas (siguen llevando
+      texto blanco); solo se aclara la versión que se usa como texto.
+      income y warning no necesitan partirse: sobre fondo oscuro ya dan 5.07
+      y 5.24 sin tocarlos.
+
+   IMPORTANTE: el bloque oscuro está escrito DOS veces (media query para el
+   modo automático + clase .dark para el explícito). CSS no permite
+   compartirlos. `theme-tokens.test.ts` falla si los dos se desincronizan. */
 
 :root {
+  color-scheme: light;
+
   --background: #f5f5f7;
   --surface: #ffffff;
   --card: #ffffff;
   --text-primary: #1a1a2e;
   --text-secondary: #6b7280;
+  /* Texto que va ENCIMA de --text-primary usado como fondo (el toast). */
+  --text-inverse: #ffffff;
   --border: #e5e7eb;
   --accent: #2563eb;
+  --accent-solid: #2563eb;
   --income: #16a34a;
   --expense: #dc2626;
+  --expense-solid: #dc2626;
   --warning: #d97706;
+
+  /* Avatares de comercio: tinte determinístico por nombre (ver merchantTint). */
+  --avatar-ink: #3a3a44;
+  --avatar-0: #e8eef7;
+  --avatar-1: #f0ebe3;
+  --avatar-2: #efe8e0;
+  --avatar-3: #e3eee6;
+  --avatar-4: #ede8ee;
+  --avatar-5: #eaeee8;
+  --avatar-6: #e8eaee;
+
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-accent: 0 4px 12px rgba(37, 99, 235, 0.25);
+  --shadow-fab: 0 4px 12px rgba(37, 99, 235, 0.35);
 }
 
+/* --- Tema oscuro (mantener sincronizado con el bloque .dark de abajo) --- */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    color-scheme: dark;
+
+    --background: #101114;
+    --surface: #16181d;
+    --card: #1b1e24;
+    --text-primary: #e8eaf0;
+    --text-secondary: #9195a1;
+    --text-inverse: #101114;
+    --border: #282c34;
+    --accent: #5b8dee;
+    --accent-solid: #2563eb;
+    --income: #16a34a;
+    --expense: #ee5f63;
+    --expense-solid: #dc2626;
+    --warning: #d97706;
+
+    --avatar-ink: #cfd3dd;
+    --avatar-0: #2b3442;
+    --avatar-1: #3b352b;
+    --avatar-2: #3a312b;
+    --avatar-3: #2a3b32;
+    --avatar-4: #342e3b;
+    --avatar-5: #2f3b2c;
+    --avatar-6: #2e3140;
+
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5);
+    /* Sin halo azul a propósito: sobre fondo oscuro se leería como neón. */
+    --shadow-accent: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --shadow-fab: 0 4px 14px rgba(0, 0, 0, 0.55);
+  }
+}
+
+/* --- Tema oscuro forzado (mantener sincronizado con la media query) --- */
 .dark {
-  --background: #0f0f0f;
-  --surface: #1a1a1a;
-  --card: #222222;
-  --text-primary: #f5f5f7;
-  --text-secondary: #8b8b92;
-  --border: #2a2a2a;
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+
+  --background: #101114;
+  --surface: #16181d;
+  --card: #1b1e24;
+  --text-primary: #e8eaf0;
+  --text-secondary: #9195a1;
+  --text-inverse: #101114;
+  --border: #282c34;
+  --accent: #5b8dee;
+  --accent-solid: #2563eb;
+  --income: #16a34a;
+  --expense: #ee5f63;
+  --expense-solid: #dc2626;
+  --warning: #d97706;
+
+  --avatar-ink: #cfd3dd;
+  --avatar-0: #2b3442;
+  --avatar-1: #3b352b;
+  --avatar-2: #3a312b;
+  --avatar-3: #2a3b32;
+  --avatar-4: #342e3b;
+  --avatar-5: #2f3b2c;
+  --avatar-6: #2e3140;
+
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5);
+  /* Sin halo azul a propósito: sobre fondo oscuro se leería como neón. */
+  --shadow-accent: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-fab: 0 4px 14px rgba(0, 0, 0, 0.55);
 }
 
 @theme inline {
@@ -32,16 +146,50 @@
   --color-card: var(--card);
   --color-ink: var(--text-primary);
   --color-ink-muted: var(--text-secondary);
+  --color-ink-inverse: var(--text-inverse);
   --color-line: var(--border);
   --color-accent: var(--accent);
+  --color-accent-solid: var(--accent-solid);
   --color-income: var(--income);
   --color-expense: var(--expense);
+  --color-expense-solid: var(--expense-solid);
   --color-warning: var(--warning);
   --font-sans: var(--font-inter), -apple-system, system-ui, sans-serif;
   --shadow-card: var(--shadow-card);
+  --shadow-accent: var(--shadow-accent);
+  --shadow-fab: var(--shadow-fab);
   --radius-card: 16px;
   --radius-btn: 12px;
   --radius-pill: 999px;
+}
+
+/* Avatar determinístico de un comercio en la lista de transacciones. El
+   tinte se elige por índice (merchantTint) en vez de por hex para que el
+   tema oscuro pueda cambiarlo: los pasteles claros del tema claro se ven
+   como manchas brillantes sobre fondo oscuro. */
+.avatar-tint {
+  color: var(--avatar-ink);
+}
+.avatar-tint-0 {
+  background-color: var(--avatar-0);
+}
+.avatar-tint-1 {
+  background-color: var(--avatar-1);
+}
+.avatar-tint-2 {
+  background-color: var(--avatar-2);
+}
+.avatar-tint-3 {
+  background-color: var(--avatar-3);
+}
+.avatar-tint-4 {
+  background-color: var(--avatar-4);
+}
+.avatar-tint-5 {
+  background-color: var(--avatar-5);
+}
+.avatar-tint-6 {
+  background-color: var(--avatar-6);
 }
 
 html,

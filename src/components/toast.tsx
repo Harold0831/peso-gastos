@@ -55,8 +55,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       >
         {toast && (
           <div
-            className={`animate-screen-in pointer-events-auto flex max-w-full items-center gap-3 rounded-pill px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_16px_rgba(0,0,0,0.2)] ${
-              toast.kind === "error" ? "bg-expense" : "bg-ink"
+            className={`animate-screen-in pointer-events-auto flex max-w-full items-center gap-3 rounded-pill px-4 py-2.5 text-[13px] font-semibold shadow-[0_4px_16px_rgba(0,0,0,0.2)] ${
+              toast.kind === "error" ? "bg-expense-solid text-white" : "bg-ink text-ink-inverse"
             }`}
           >
             <span>{toast.message}</span>
@@ -67,7 +67,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                   setToast(null);
                   toast.action?.onAction();
                 }}
-                className="shrink-0 rounded-pill bg-white/20 px-3 py-1 text-[12px] font-bold text-white"
+                className="shrink-0 rounded-pill bg-current/20 px-3 py-1 text-[12px] font-bold"
               >
                 {toast.action.label}
               </button>

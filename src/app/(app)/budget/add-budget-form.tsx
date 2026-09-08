@@ -66,7 +66,7 @@ export function AddBudgetForm({
               onClick={() => setCategoryId(c.id)}
               className={`shrink-0 rounded-pill border px-3 py-1.5 text-xs font-semibold transition ${
                 categoryId === c.id
-                  ? "border-accent bg-accent text-white"
+                  ? "border-accent bg-accent-solid text-white"
                   : "border-line bg-surface text-ink"
               }`}
             >
@@ -94,7 +94,7 @@ export function AddBudgetForm({
         <button
           onClick={handleSave}
           disabled={saving || !categoryId || !amount}
-          className="flex-1 rounded-btn bg-accent py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
+          className="flex-1 rounded-btn bg-accent-solid py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
         >
           {saving ? "Guardando…" : "Guardar"}
         </button>

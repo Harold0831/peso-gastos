@@ -357,7 +357,7 @@ function CardForm({
             type="button"
             onClick={() => setType(value)}
             className={`flex-1 rounded-[9px] py-2 text-[13px] font-bold transition ${
-              type === value ? "bg-accent text-white" : "text-ink-muted"
+              type === value ? "bg-accent-solid text-white" : "text-ink-muted"
             }`}
           >
             {TYPE_LABEL[value]}
@@ -396,7 +396,7 @@ function CardForm({
           type="button"
           onClick={handleSave}
           disabled={saving || !nickname.trim() || last4.length !== 4 || demoMode}
-          className="flex-[1.5] rounded-btn bg-accent py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
+          className="flex-[1.5] rounded-btn bg-accent-solid py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
         >
           {saving ? "Guardando…" : mode === "edit" ? "Guardar cambios" : "Agregar tarjeta"}
         </button>

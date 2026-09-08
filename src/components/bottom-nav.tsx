@@ -70,7 +70,7 @@ export function BottomNav() {
         <Link
           href="/transactions/new"
           aria-label="Agregar transacción"
-          className="-translate-y-2 rounded-pill bg-accent p-0 shadow-[0_4px_12px_rgba(37,99,235,0.35)] transition active:scale-95"
+          className="-translate-y-2 rounded-pill bg-accent-solid p-0 shadow-fab transition active:scale-95"
         >
           <span className="flex h-10 w-14 items-center justify-center text-white">
             <PlusIcon />

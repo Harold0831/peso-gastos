@@ -54,7 +54,7 @@ src/
 │   │   ├── cards/            # 10. Tarjetas: gasto por tarjeta, con
 │   │   │   └── loading.tsx   #     auto-descubrimiento desde card_last4
 │   │   ├── profile/          # 11. Perfil: Gmail, bancos, contraseña,
-│   │   │   └── loading.tsx   #     Face ID, push
+│   │   │   └── loading.tsx   #     Face ID, push, tema (Apariencia)
 │   │   └── notifications/    # 12. Bandeja (campanita): derivada del estado,
 │   │       └── loading.tsx   #    ver getAttentionItems() — sin tabla propia
 │   └── api/
@@ -93,11 +93,14 @@ src/
 │   ├── session.ts            # JWT de sesión (sub = user_id) con jose, corre en edge
 │   ├── webauthn.ts           # Passkeys por usuario (app-lock)
 │   ├── webauthn-client.ts    # verifyPasskey() — usado por LockScreen
-│   └── app-lock.ts           # Umbral de re-bloqueo (sessionStorage)
+│   ├── app-lock.ts           # Umbral de re-bloqueo (sessionStorage)
+│   └── theme.ts              # Preferencia de tema (claro/oscuro/sistema)
 ├── components/                # BottomNav, TxRow, Donut, PullToRefresh, Skeleton,
 │                               # AppLockGate + LockScreen (re-bloqueo con Face ID),
 │                               # Toast (feedback de mutaciones), Dismissible
-│                               # (banners descartables), OnboardingCard
+│                               # (banners descartables), OnboardingCard,
+│                               # ThemeScript (tema antes del 1er paint) +
+│                               # ThemeToggle (selector en /profile)
 supabase/
 ├── migrations/0001_init.sql # Tablas base + RLS
 ├── migrations/0002_...sql   # Soft delete de transacciones
@@ -844,6 +847,65 @@ activa el bloqueo por el `useState(false)` inicial del gate.
   umbral, nunca repetido. Suscripción por dispositivo desde el perfil
   ("Notificaciones"); en iPhone requiere la PWA instalada (iOS 16.4+).
   Fallo suave en todo: una push jamás tumba un sync o una confirmación.
+- **Tema oscuro** (2026-09-08): tres opciones en /profile → Apariencia —
+  **Sistema** (default), **Claro** y **Oscuro**. La preferencia vive en
+  `localStorage["peso-theme"]` y NO en la cuenta: es por dispositivo (la
+  misma persona puede querer claro en el iPhone y oscuro en el escritorio).
+  `ThemeScript` la aplica en un `<script>` en línea y síncrono dentro del
+  `<head>` — tiene que correr ANTES del primer paint, porque cualquier cosa
+  que dependa de React (efecto, estado) llega con la pantalla ya pintada y
+  se vería el flashazo blanco. Por eso el `<html>` lleva
+  `suppressHydrationWarning`.
+  - **Por qué hay una clase `.light` y no solo `.dark`**: el modo automático
+    lo resuelve `@media (prefers-color-scheme: dark)`, así que forzar
+    "Oscuro" solo necesita `.dark`. Pero forzar **"Claro" con el sistema en
+    oscuro** requiere poder DESACTIVAR esa media query, y eso es lo que hace
+    `:root:not(.light)`. Sin `.light`, elegir "Claro" no haría nada para
+    quien tenga el iPhone en oscuro.
+  - **La paleta oscura está escrita dos veces** en `globals.css` (la media
+    query del modo automático y la clase `.dark` del forzado). CSS no permite
+    compartir un bloque entre las dos condiciones. Si se desincronizan, la
+    app se ve distinta según CÓMO llegaste al modo oscuro — un bug silencioso
+    y horrible de diagnosticar; **`theme.test.ts` falla si divergen** (mismos
+    tokens, mismos valores) y también si añades un token al tema claro sin
+    contraparte oscura. Verificado a mano con las tres formas de romperlo.
+  - **Tokens `-solid`** (`--accent-solid`, `--expense-solid`): un color de
+    marca no puede servir a la vez de TEXTO sobre fondo oscuro y de RELLENO
+    con texto blanco encima — no es cuestión de gusto, es aritmética: para
+    llegar a 4.5:1 como texto hace falta luminancia ≥ 0.236 y para que el
+    blanco encima llegue a 4.5:1 hace falta ≤ 0.183. Por eso los que se usan
+    de las dos formas están partidos: `bg-accent-solid` (relleno, mismo azul
+    en los dos temas) vs `text-accent`/`border-accent`/`bg-accent/10` (se
+    aclara en oscuro). `income` y `warning` NO se parten: sobre fondo oscuro
+    ya dan 5.07 y 5.24 sin tocarlos. Los cuatro acentos quedan entre 5.0 y
+    5.3 de contraste sobre `--card`: al estar igualados ninguno grita, que es
+    lo que separa un tema oscuro sobrio de uno de neón.
+  - **`text-white` sobre `bg-ink` era un bug** (el toast de éxito, el chip
+    activo de /transactions): en oscuro `--text-primary` es casi blanco, así
+    que la píldora quedaba blanca con texto blanco. El par correcto de
+    `bg-ink` es `text-ink-inverse`, que se invierte con el tema.
+  - Los **avatares de comercio** guardan un ÍNDICE (`merchantTint`) y no un
+    hex: los pasteles claros del tema claro se ven como manchas brillantes
+    sobre fondo oscuro. El color real lo pone `.avatar-tint-N` en
+    `globals.css` y cambia con el tema.
+  - `color-scheme` en `:root` es lo que hace que los controles NATIVOS
+    (inputs de fecha y número, el selector de hora, scrollbars) se pinten
+    oscuros. Sin él quedan blancos y desentonan.
+  - El **halo azul** de los botones principales (`shadow-accent`,
+    `shadow-fab`) se cambia por sombra negra en oscuro: sobre fondo oscuro un
+    resplandor de color se lee como neón.
+  - `meta[name=theme-color]` (la franja del notch en la PWA) ya NO puede
+    depender de `prefers-color-scheme`, porque la preferencia del usuario
+    puede ir CONTRA la del sistema; es un único `<meta>` sin `media` que
+    `ThemeScript` reescribe. `THEME_COLOR` en `theme.ts` debe coincidir con
+    `--background` de cada tema — el test lo comprueba.
+  - `global-error.tsx` no puede usar Tailwind (reemplaza el layout que acaba
+    de fallar, así que globals.css no se cargó): trae su propia mini-paleta
+    en línea y reusa `ThemeScript`, para no soltar un flashazo blanco justo
+    en el peor momento.
+  - Lo único que sigue siendo claro en los dos temas es el `manifest.ts`
+    (`theme_color`/`background_color`): es estático, se usa para el splash de
+    instalación y no puede leer la preferencia del usuario.
 - **Convenciones de UX** (2026-07-18): toda mutación confirma con un toast
   (`useToast()`, provider en el layout de `(app)`) — nunca terminar una
   acción en silencio. Los banners promocionales/opcionales del dashboard

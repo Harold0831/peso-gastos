@@ -88,7 +88,7 @@ export function OnboardingCard({ gmailLinked }: OnboardingCardProps) {
       {gmailLinked ? (
         <Link
           href="/profile"
-          className="mt-5 block w-full rounded-btn bg-accent py-3 text-center text-[13px] font-bold text-white"
+          className="mt-5 block w-full rounded-btn bg-accent-solid py-3 text-center text-[13px] font-bold text-white"
         >
           Revisar mis bancos
         </Link>
@@ -96,7 +96,7 @@ export function OnboardingCard({ gmailLinked }: OnboardingCardProps) {
         // <a> normal: /api/auth/google es un route handler, no una página
         <a
           href="/api/auth/google?consent=1"
-          className="mt-5 block w-full rounded-btn bg-accent py-3 text-center text-[13px] font-bold text-white"
+          className="mt-5 block w-full rounded-btn bg-accent-solid py-3 text-center text-[13px] font-bold text-white"
         >
           Vincular Gmail
         </a>

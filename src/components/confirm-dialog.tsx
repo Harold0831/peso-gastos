@@ -65,7 +65,7 @@ export function ConfirmDialog({
           <button
             onClick={onConfirm}
             disabled={pending}
-            className="flex-1 rounded-btn bg-expense py-3 text-[13px] font-bold text-white disabled:opacity-60"
+            className="flex-1 rounded-btn bg-expense-solid py-3 text-[13px] font-bold text-white disabled:opacity-60"
           >
             {pending ? "…" : confirmLabel}
           </button>

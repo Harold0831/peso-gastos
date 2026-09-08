@@ -136,7 +136,7 @@ export function ConfirmForm({
                 className={`rounded-[9px] px-4 py-1.5 text-[12px] font-bold transition ${
                   type === value
                     ? value === "expense"
-                      ? "bg-expense text-white"
+                      ? "bg-expense-solid text-white"
                       : "bg-income text-white"
                     : "text-ink-muted"
                 }`}
@@ -269,7 +269,9 @@ export function ConfirmForm({
               key={name}
               onClick={() => setCategory(name)}
               className={`flex shrink-0 items-center gap-1.5 rounded-pill border px-3.5 py-2 text-xs font-semibold transition ${
-                active ? "border-accent bg-accent text-white" : "border-line bg-surface text-ink"
+                active
+                  ? "border-accent bg-accent-solid text-white"
+                  : "border-line bg-surface text-ink"
               }`}
             >
               {name}
@@ -306,7 +308,7 @@ export function ConfirmForm({
         <button
           onClick={handleConfirm}
           disabled={saving}
-          className="w-full rounded-[14px] bg-accent py-4 text-[15px] font-bold tracking-tight text-white shadow-[0_4px_12px_rgba(37,99,235,0.25)] transition active:scale-[0.99] disabled:opacity-60"
+          className="w-full rounded-[14px] bg-accent-solid py-4 text-[15px] font-bold tracking-tight text-white shadow-accent transition active:scale-[0.99] disabled:opacity-60"
         >
           {saving ? "Guardando…" : tx.confirmed ? "Guardar cambios" : "Confirmar"}
         </button>

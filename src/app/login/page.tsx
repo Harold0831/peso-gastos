@@ -18,7 +18,7 @@ export default async function LoginPage({
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center px-8 pb-safe">
       <div className="flex w-full max-w-sm flex-col items-center text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent text-2xl font-extrabold text-white shadow-card">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-solid text-2xl font-extrabold text-white shadow-card">
           P
         </div>
         <h1 className="mt-6 text-3xl font-extrabold tracking-tight text-ink">Peso</h1>

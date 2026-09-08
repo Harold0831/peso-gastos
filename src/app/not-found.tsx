@@ -15,7 +15,7 @@ export default function NotFound() {
       </p>
       <Link
         href="/"
-        className="mt-6 w-full max-w-xs rounded-btn bg-accent py-3.5 text-[15px] font-bold text-white shadow-card transition active:scale-[0.98]"
+        className="mt-6 w-full max-w-xs rounded-btn bg-accent-solid py-3.5 text-[15px] font-bold text-white shadow-card transition active:scale-[0.98]"
       >
         Ir al inicio
       </Link>

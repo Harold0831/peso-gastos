@@ -92,7 +92,7 @@ export function EmailAuthForm() {
       <button
         type="submit"
         disabled={busy}
-        className="mt-3 w-full rounded-btn bg-accent py-4 text-[15px] font-bold text-white shadow-card transition active:scale-[0.98] disabled:opacity-60"
+        className="mt-3 w-full rounded-btn bg-accent-solid py-4 text-[15px] font-bold text-white shadow-card transition active:scale-[0.98] disabled:opacity-60"
       >
         {busy ? "Un momento…" : mode === "login" ? "Entrar" : "Crear cuenta"}
       </button>
