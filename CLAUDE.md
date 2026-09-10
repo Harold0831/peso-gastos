@@ -968,9 +968,9 @@ activa el bloqueo por el `useState(false)` inicial del gate.
   - `color-scheme` en `:root` es lo que hace que los controles NATIVOS
     (inputs de fecha y número, el selector de hora, scrollbars) se pinten
     oscuros. Sin él quedan blancos y desentonan.
-  - El **halo azul** de los botones principales (`shadow-accent`,
-    `shadow-fab`) se cambia por sombra negra en oscuro: sobre fondo oscuro un
-    resplandor de color se lee como neón.
+  - El **halo azul** de `shadow-accent` se cambia por sombra negra en oscuro:
+    sobre fondo oscuro un resplandor de color se lee como neón. `shadow-fab`
+    dejó de ser azul en LOS DOS temas al llegar la muesca — ver abajo.
   - `meta[name=theme-color]` (la franja del notch en la PWA) ya NO puede
     depender de `prefers-color-scheme`, porque la preferencia del usuario
     puede ir CONTRA la del sistema; es un único `<meta>` sin `media` que
@@ -1050,6 +1050,36 @@ activa el bloqueo por el `useState(false)` inicial del gate.
   completo, el tile es el vistazo de un segundo ("3/5 pagados") sin
   navegar. Lo que sí se quitó del dashboard fue la tarjeta de "N por
   confirmar", que ya vive en la campanita.
+- **El FAB va en una muesca de la barra** (2026-09-10, `.nav-notch` en
+  `globals.css`): el botón "+" es un círculo que sobresale por encima de la
+  bottom nav, y el borde superior de la barra lo RODEA en vez de pasarle por
+  detrás.
+  - **Máscaras CSS, no un SVG de fondo.** La barra ocupa todo el ancho de la
+    pantalla: un SVG estirado con `preserveAspectRatio="none"` convertiría el
+    círculo en un óvalo en pantallas anchas, y uno "meet" dejaría de cubrir los
+    extremos. Un `radial-gradient` se posiciona en % y conserva el círculo a
+    cualquier ancho — comprobado a 390px y a 900px.
+  - **Tres capas**: el elemento pinta `--background` (lo que se ve dentro de la
+    mordida), `::before` pinta `--line` con un agujero de radio R, y `::after`
+    pinta `--surface` con un agujero de radio R+1 y 1px de inset. Los agujeros
+    son concéntricos y difieren 1px, así que entre los dos radios solo asoma la
+    línea y esa franja mide 1px en TODO el recorrido de la curva. En el tramo
+    plano el mismo efecto lo da el inset. Todo con tokens, así que la muesca
+    sigue al tema oscuro sin duplicar nada.
+  - **La mordida se rellena con `--background` y no se deja transparente.** Con
+    el agujero pasante, el anillo entre el botón y la barra dejaba ver el
+    contenido que scrollea por detrás: una media luna con trozos de texto
+    pasando por dentro. Tapar no es mentir — la barra ya es opaca sobre ese
+    mismo contenido.
+  - **`--notch-y` y la posición del FAB tienen que coincidir.** El botón se
+    centra en el MISMO punto que el círculo de la máscara; si uno se mueve sin
+    el otro, el anillo deja de ser uniforme y se nota enseguida.
+  - **`shadow-fab` pasó de halo azul a sombra neutra.** Con la barra plana el
+    resplandor daba la profundidad; con la muesca la da el recorte, y el halo
+    azul de 12px se comía justo el arco de `--line` que hay que ver — invisible
+    en el código, evidente en la captura del tema claro.
+  - Si el navegador no soporta máscaras, la capa de superficie tapa a las otras
+    dos salvo ese 1px de arriba: queda la barra plana de siempre, sin muesca.
 - **`loading.tsx` por ruta en vez de spinners manuales.** Next.js App
   Router activa el archivo `loading.tsx` de cada segmento automáticamente
   vía Suspense mientras el server component espera datos — no hay que

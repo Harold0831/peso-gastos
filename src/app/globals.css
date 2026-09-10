@@ -69,7 +69,7 @@
 
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
   --shadow-accent: 0 4px 12px rgba(37, 99, 235, 0.25);
-  --shadow-fab: 0 4px 12px rgba(37, 99, 235, 0.35);
+  --shadow-fab: 0 2px 6px rgba(15, 23, 42, 0.22);
 }
 
 /* --- Tema oscuro (mantener sincronizado con el bloque .dark de abajo) --- */
@@ -103,7 +103,7 @@
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5);
     /* Sin halo azul a propósito: sobre fondo oscuro se leería como neón. */
     --shadow-accent: 0 4px 12px rgba(0, 0, 0, 0.5);
-    --shadow-fab: 0 4px 14px rgba(0, 0, 0, 0.55);
+    --shadow-fab: 0 3px 10px rgba(0, 0, 0, 0.5);
   }
 }
 
@@ -137,7 +137,7 @@
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5);
   /* Sin halo azul a propósito: sobre fondo oscuro se leería como neón. */
   --shadow-accent: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-fab: 0 4px 14px rgba(0, 0, 0, 0.55);
+  --shadow-fab: 0 3px 10px rgba(0, 0, 0, 0.5);
 }
 
 @theme inline {
@@ -217,6 +217,81 @@ body {
 
 .pt-safe {
   padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Muesca del FAB en la bottom nav: el borde superior de la barra rodea el
+   botón "+" en vez de pasarle por detrás.
+
+   Se hace con MÁSCARAS y no con un SVG de fondo porque la barra ocupa todo el
+   ancho de la pantalla: un SVG estirado con `preserveAspectRatio="none"`
+   deformaría la curva (óvalo en pantallas anchas), y uno "meet" dejaría de
+   cubrir los extremos. Un radial-gradient se posiciona en % y conserva el
+   círculo a cualquier ancho.
+
+   Tres capas apiladas, todas con tokens del tema (así la muesca sigue al modo
+   oscuro sin duplicar nada):
+     1. el elemento: `--background`, sin máscara — es lo que se ve DENTRO de la
+        mordida.
+     2. ::before: `--line`, con un agujero de radio R.
+     3. ::after: `--surface`, con un agujero de radio R+1 y 1px de inset.
+   Los agujeros son CONCÉNTRICOS y difieren 1px, así que entre los dos radios
+   solo asoma la línea, y esa franja mide 1px en TODO el recorrido de la curva
+   — que es justo lo que un `border-top` recto no puede hacer. En el tramo
+   plano el mismo efecto lo da el inset.
+
+   Si el navegador no soporta máscaras, la capa de superficie tapa a las otras
+   dos salvo ese 1px de arriba: queda la barra plana de siempre, sin muesca. */
+.nav-notch {
+  --notch-r: 37px;
+  /* El fondo de la PÁGINA rellena la mordida. Sin esto el anillo entre el
+     botón y la barra es transparente y deja ver el contenido que scrollea por
+     detrás: una media luna con trozos de texto pasando por dentro. Tapar no
+     es mentir — la barra ya es opaca sobre ese mismo contenido. */
+  background-color: var(--background);
+  /* Centro del círculo, medido desde el borde superior de la barra. Negativo
+     = por encima, para que el botón sobresalga y la mordida no se coma media
+     barra. Debe coincidir con la posición del FAB en bottom-nav.tsx. */
+  --notch-y: -8px;
+  position: absolute;
+  inset: 0;
+}
+
+/* Capa de la línea: tapa el fondo salvo el agujero de radio R. */
+.nav-notch::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--line);
+  -webkit-mask: radial-gradient(
+    circle var(--notch-r) at 50% var(--notch-y),
+    transparent 0 var(--notch-r),
+    #000 calc(var(--notch-r) + 0.5px)
+  );
+  mask: radial-gradient(
+    circle var(--notch-r) at 50% var(--notch-y),
+    transparent 0 var(--notch-r),
+    #000 calc(var(--notch-r) + 0.5px)
+  );
+}
+
+.nav-notch::after {
+  content: "";
+  position: absolute;
+  /* 1px por debajo: en el tramo recto ese hueco ES la línea superior. */
+  inset: 1px 0 0 0;
+  background: var(--surface);
+  /* Mismo centro en coordenadas ABSOLUTAS (de ahí el -1px, que compensa el
+     inset) y 1px más de radio: anillo de grosor constante. */
+  -webkit-mask: radial-gradient(
+    circle calc(var(--notch-r) + 1px) at 50% calc(var(--notch-y) - 1px),
+    transparent 0 calc(var(--notch-r) + 1px),
+    #000 calc(var(--notch-r) + 1.5px)
+  );
+  mask: radial-gradient(
+    circle calc(var(--notch-r) + 1px) at 50% calc(var(--notch-y) - 1px),
+    transparent 0 calc(var(--notch-r) + 1px),
+    #000 calc(var(--notch-r) + 1.5px)
+  );
 }
 
 /* Oculta scrollbars en carruseles horizontales (pills de categorías) */
