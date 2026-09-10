@@ -337,7 +337,25 @@ design/                      # Referencias visuales (no es código de la app)
   queda atenuada hasta que llegan los datos, en vez de parpadear a un
   esqueleto en cada toque de ‹ ›. `parseMonthParam()` construye la fecha en
   hora LOCAL (`new Date(año, mes, 1)`): con `new Date("2026-03")` (UTC) el mes
-  se desplazaría en RD (UTC-4). Por la misma razón `getAttentionItems()` (la
+  se desplazaría en RD (UTC-4).
+  **El mes cruza al cliente como TEXTO `"YYYY-MM"` (`monthParam`), nunca como
+  `Date`** — bug real, corregido el 2026-09-10. Un `Date` cruza la frontera
+  RSC como INSTANTE, y el navegador lo reinterpreta en SU zona horaria: el
+  servidor (Vercel, UTC) mandaba "1 de septiembre" como
+  `2026-09-01T00:00:00Z`, que en RD (UTC-4) es el **31 de agosto a las
+  8 p. m.**. Síntomas, los tres a la vez: la cabecera decía "Agosto" mientras
+  la lista mostraba septiembre (la consulta del servidor SÍ era correcta, solo
+  la etiqueta se corría), ‹ saltaba DOS meses (agosto → junio → abril) porque
+  `subMonths` partía del día 31 y date-fns lo recortaba, y › calculaba como
+  destino el mes en el que YA estabas, así que `router.replace` iba a la misma
+  URL y la pantalla no cambiaba nunca. Las flechas usan `shiftMonthParam()`
+  (aritmética de calendario sobre el texto) y la etiqueta sale de
+  `formatMonthLabel(parseMonthParam(monthParam))`, que construye el `Date` con
+  año y mes LOCALES. `/charts` nunca tuvo el bug porque calcula etiqueta y
+  enlaces ‹ › **en el servidor**, y `/budget` porque ya pasaba un string —
+  /transactions era la única pantalla que mandaba un `Date` al cliente. La
+  suite corre en `TZ=America/Santo_Domingo` (`vitest.config.ts`) justo por
+  esto: en UTC el bug es INVISIBLE y los 198 tests pasaban en verde. Por la misma razón `getAttentionItems()` (la
   campanita) dejó de cargar todo el historial para filtrar las no confirmadas
   y usa `getPendingSummary()`, que ordena por `created_at` y no por `date` —
   una transacción con fecha vieja puede haber entrado hoy, y ese timestamp es
