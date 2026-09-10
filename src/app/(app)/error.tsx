@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { AlertIcon } from "@/components/icons";
 
 /**
  * Error boundary de las pantallas de la app.
@@ -31,7 +32,7 @@ export default function AppError({
 
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center px-8 pb-24 text-center">
-      <p className="text-3xl">😕</p>
+      <AlertIcon size={34} className="text-ink-muted" />
       <h1 className="mt-3 text-[17px] font-bold tracking-tight text-ink">
         Algo salió mal al cargar esto
       </h1>

@@ -121,7 +121,7 @@ async function maybeNotifyBudgetThreshold(categoryName: string, txIds: string[])
       Math.round((entry.spent / limit) * 100),
     );
 
-    await sendPushToUser(userId, { title: "⚠️ Presupuesto", body, url: "/budget" });
+    await sendPushToUser(userId, { title: "Presupuesto", body, url: "/budget" });
   } catch (err) {
     console.error("[maybeNotifyBudgetThreshold]", err);
   }

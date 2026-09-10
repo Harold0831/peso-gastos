@@ -7,6 +7,7 @@ import { currencySymbol, formatMoney } from "@/lib/format";
 import { createRecurringExpense, deleteRecurringExpense, setRecurringPaid } from "@/lib/actions";
 import { useToast } from "@/components/toast";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { CheckCircleIcon, CheckIcon, TrashIcon } from "@/components/icons";
 
 export function RecurringList({
   items,
@@ -26,10 +27,15 @@ export function RecurringList({
       <div className="px-5 py-4">
         <h1 className="text-[28px] font-extrabold tracking-tight text-ink">Gastos fijos</h1>
         {items.length > 0 && (
-          <p className="mt-1 text-[13px] text-ink-muted">
-            {paid === items.length
-              ? "🎉 Todos pagados este mes"
-              : `${paid} de ${items.length} pagados este mes`}
+          <p className="mt-1 flex items-center gap-1.5 text-[13px] text-ink-muted">
+            {paid === items.length ? (
+              <>
+                <CheckCircleIcon size={15} className="text-income" />
+                Todos pagados este mes
+              </>
+            ) : (
+              `${paid} de ${items.length} pagados este mes`
+            )}
           </p>
         )}
       </div>
@@ -99,11 +105,14 @@ function RecurringCard({ item, monthKey }: { item: RecurringStatusItem; monthKey
         disabled={busy}
         aria-pressed={paid}
         aria-label={paid ? "Marcar como pendiente" : "Marcar como pagado"}
-        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border-2 text-sm font-bold transition disabled:opacity-50 ${
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-pill border-2 transition disabled:opacity-50 ${
           paid ? "border-income bg-income text-white" : "border-line bg-surface text-transparent"
         }`}
       >
-        ✓
+        {/* Siempre montado, invisible con `text-transparent` cuando está
+            pendiente: el círculo no cambia de tamaño al marcarlo. El SVG usa
+            currentColor, así que hereda ese truco igual que el ✓ de antes. */}
+        <CheckIcon size={17} />
       </button>
 
       <div className="min-w-0 flex-1">
@@ -143,9 +152,9 @@ function RecurringCard({ item, monthKey }: { item: RecurringStatusItem; monthKey
         onClick={() => setConfirmingDelete(true)}
         disabled={busy}
         aria-label={`Eliminar ${item.expense.name}`}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill text-ink-muted transition active:bg-background disabled:opacity-50"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-pill text-ink-muted transition active:bg-background disabled:opacity-50"
       >
-        🗑️
+        <TrashIcon size={18} />
       </button>
 
       <ConfirmDialog

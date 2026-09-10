@@ -145,9 +145,9 @@ async function invocaciones(): Promise<Record<string, () => Promise<unknown>>> {
       fake.seed("categories", [{ id: "cat-1", name: "Entretenimiento" }]);
       return a.autoConfirmPending();
     },
-    createCategory: () => a.createCategory({ name: "Mascota", icon: "🐶", color: "#2563EB" }),
+    createCategory: () => a.createCategory({ name: "Mascota", icon: "pet", color: "#2563EB" }),
     updateCategory: () =>
-      a.updateCategory({ id: "cat-1", name: "Mascota", icon: "🐶", color: "#2563EB" }),
+      a.updateCategory({ id: "cat-1", name: "Mascota", icon: "pet", color: "#2563EB" }),
     setCategoryHidden: () => a.setCategoryHidden({ category_id: "cat-1", hidden: true }),
     restoreDefaultCategories: () => a.restoreDefaultCategories(),
     deleteCategory: () => a.deleteCategory("cat-1"),

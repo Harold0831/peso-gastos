@@ -683,7 +683,9 @@ export async function getUnregisteredCards(): Promise<UnregisteredCard[]> {
 
 export interface AttentionItem {
   id: string;
-  icon: string;
+  /** El ícono NO viaja aquí: lo elige la UI a partir de `kind`. Guardar un
+   *  emoji en la capa de datos era arrastrar decoración a través de la
+   *  frontera RSC y, peor, dejar dos sitios que podían desincronizarse. */
   title: string;
   detail: string;
   href: string;
@@ -728,7 +730,6 @@ export async function getAttentionItems(): Promise<AttentionItem[]> {
     if (gmail.linked && !gmail.syncEnabled) {
       items.push({
         id: "gmail-expired",
-        icon: "✉️",
         title: "El acceso a tu Gmail expiró",
         detail: "Reconéctalo para que tus transacciones sigan llegando",
         href: "/profile",
@@ -752,7 +753,6 @@ export async function getAttentionItems(): Promise<AttentionItem[]> {
     if (dismissedAt === undefined || (dismissedAt !== null && newest > dismissedAt)) {
       items.push({
         id: "pending",
-        icon: "⏳",
         title:
           pending.count === 1
             ? "Tienes 1 transacción sin confirmar"
@@ -774,7 +774,6 @@ export async function getAttentionItems(): Promise<AttentionItem[]> {
     if (dismissals.has(id)) continue;
     items.push({
       id,
-      icon: level === "over" ? "🚨" : "⚠️",
       title:
         level === "over"
           ? `Presupuesto de ${category.name} excedido`

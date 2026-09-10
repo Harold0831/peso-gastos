@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CompassIcon } from "@/components/icons";
 
 /**
  * 404. Se ve sobre todo al abrir un enlace viejo o al escribir una ruta a
@@ -8,7 +9,7 @@ import Link from "next/link";
 export default function NotFound() {
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center px-8 text-center">
-      <p className="text-3xl">🧭</p>
+      <CompassIcon size={34} className="text-ink-muted" />
       <h1 className="mt-3 text-[17px] font-bold tracking-tight text-ink">Esta página no existe</h1>
       <p className="mt-2 max-w-xs text-[13px] leading-relaxed text-ink-muted">
         Puede que el enlace esté viejo o que la dirección tenga un error.

@@ -122,7 +122,9 @@ describe("matchesRule", () => {
     expect(matchesRule({ merchant: "Supermercado Nacional", amount: 6000 }, supermercado)).toEqual({
       category: "Alimentación",
     });
-    expect(matchesRule({ merchant: "Supermercado Nacional", amount: 15000 }, supermercado)).toBeNull();
+    expect(
+      matchesRule({ merchant: "Supermercado Nacional", amount: 15000 }, supermercado),
+    ).toBeNull();
   });
 
   it("un monto menor de lo habitual siempre pasa", () => {

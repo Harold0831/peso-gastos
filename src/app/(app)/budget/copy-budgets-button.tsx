@@ -27,7 +27,7 @@ export function CopyBudgetsButton({ month, prevLabel }: { month: string; prevLab
       disabled={copying}
       className="mt-1.5 rounded-[14px] border border-accent/30 bg-accent/5 py-3.5 text-[13px] font-bold text-accent disabled:opacity-50"
     >
-      {copying ? "Copiando…" : `⧉ Copiar presupuestos de ${prevLabel}`}
+      {copying ? "Copiando…" : `Copiar presupuestos de ${prevLabel}`}
     </button>
   );
 }

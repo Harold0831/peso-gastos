@@ -18,7 +18,14 @@ import { Donut } from "@/components/donut";
 import { Dismissible } from "@/components/dismissible";
 import { OnboardingCard } from "@/components/onboarding-card";
 import { TxRow } from "@/components/tx-row";
-import { BellIcon, ChevronIcon, RefreshIcon, TargetIcon } from "@/components/icons";
+import {
+  BellIcon,
+  ChevronIcon,
+  LockIcon,
+  MailIcon,
+  RefreshIcon,
+  TargetIcon,
+} from "@/components/icons";
 
 export const dynamic = "force-dynamic";
 
@@ -194,8 +201,8 @@ export default async function DashboardPage() {
           href="/profile"
           className="mt-3.5 flex items-center gap-3 rounded-[14px] border border-warning/40 bg-warning/10 px-4 py-3"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-warning/10 text-base">
-            ✉️
+          <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-warning/10 text-warning">
+            <MailIcon size={17} />
           </span>
           <span className="flex-1">
             <span className="block text-[13px] font-semibold text-ink">
@@ -216,8 +223,8 @@ export default async function DashboardPage() {
             href="/profile"
             className="flex items-center gap-3 rounded-[14px] border border-accent/30 bg-accent/5 px-4 py-3 pr-10"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-accent/10 text-base">
-              ✉️
+            <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-accent/10 text-accent">
+              <MailIcon size={17} />
             </span>
             <span className="flex-1">
               <span className="block text-[13px] font-semibold text-ink">
@@ -239,8 +246,8 @@ export default async function DashboardPage() {
             href="/profile"
             className="flex items-center gap-3 rounded-[14px] border border-accent/30 bg-accent/5 px-4 py-3 pr-10"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-accent/10 text-base">
-              🔒
+            <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-accent/10 text-accent">
+              <LockIcon size={17} />
             </span>
             <span className="flex-1">
               <span className="block text-[13px] font-semibold text-ink">
@@ -271,7 +278,7 @@ export default async function DashboardPage() {
               {recurring.length === 0
                 ? "Regístralos"
                 : recurringPaid === recurring.length
-                  ? "🎉 Todos pagados"
+                  ? "Todos pagados"
                   : `${recurringPaid}/${recurring.length} pagados`}
             </span>
           </span>
@@ -290,7 +297,7 @@ export default async function DashboardPage() {
               {goals.length === 0
                 ? "Crea la primera"
                 : activeGoals === 0
-                  ? "🎉 Completadas"
+                  ? "Completadas"
                   : `${activeGoals} ${activeGoals === 1 ? "activa" : "activas"}`}
             </span>
           </span>
@@ -303,7 +310,7 @@ export default async function DashboardPage() {
           Transacciones recientes
         </h2>
         <Link href="/transactions" className="text-[13px] font-semibold text-accent">
-          Ver todas →
+          Ver todas
         </Link>
       </div>
       <section className="overflow-hidden rounded-card border border-line bg-card">

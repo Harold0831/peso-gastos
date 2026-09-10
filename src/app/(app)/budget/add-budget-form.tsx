@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createBudget } from "@/lib/actions";
 import { currencySymbol } from "@/lib/format";
 import { useToast } from "@/components/toast";
+import { CategoryIcon } from "@/components/category-icons";
 import type { Currency } from "@/lib/types";
 
 export function AddBudgetForm({
@@ -64,13 +65,14 @@ export function AddBudgetForm({
             <button
               key={c.id}
               onClick={() => setCategoryId(c.id)}
-              className={`shrink-0 rounded-pill border px-3 py-1.5 text-xs font-semibold transition ${
+              className={`flex shrink-0 items-center gap-1.5 rounded-pill border px-3 py-2 text-xs font-semibold transition ${
                 categoryId === c.id
                   ? "border-accent bg-accent-solid text-white"
                   : "border-line bg-surface text-ink"
               }`}
             >
-              {c.icon} {c.name}
+              <CategoryIcon icon={c.icon} size={14} />
+              {c.name}
             </button>
           ))
         )}

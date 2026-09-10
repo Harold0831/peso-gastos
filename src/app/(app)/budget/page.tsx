@@ -1,6 +1,8 @@
 import { subMonths } from "date-fns";
 import { getBudgetsForMonth, getCategories, getHomeCurrency } from "@/lib/data";
 import { formatMoney, formatMonthLabel } from "@/lib/format";
+import { AlertIcon } from "@/components/icons";
+import { CategoryIcon } from "@/components/category-icons";
 import { AddBudgetForm } from "./add-budget-form";
 import { CopyBudgetsButton } from "./copy-budgets-button";
 
@@ -68,7 +70,7 @@ export default async function BudgetPage() {
       {/* Alerta */}
       {overspent.length > 0 && (
         <div className="mx-5 mb-4 flex items-start gap-2.5 rounded-[14px] border border-warning/30 bg-warning/10 px-4 py-3">
-          <span aria-hidden>⚠️</span>
+          <AlertIcon size={17} className="mt-px shrink-0 text-warning" />
           <p className="text-[13px] font-medium text-ink">
             {overspent.length === 1
               ? `${overspent[0].category.name} superó el 80% del presupuesto.`
@@ -98,8 +100,8 @@ export default async function BudgetPage() {
             >
               <div className="mb-2.5 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-pill bg-background text-sm">
-                    {category.icon}
+                  <span className="flex h-7 w-7 items-center justify-center rounded-pill bg-background text-ink-muted">
+                    <CategoryIcon icon={category.icon} size={16} />
                   </span>
                   <span className="text-sm font-bold tracking-tight text-ink">{category.name}</span>
                 </div>

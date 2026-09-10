@@ -13,6 +13,7 @@ import {
   withdrawFromGoal,
 } from "@/lib/actions";
 import { useToast } from "@/components/toast";
+import { CloseIcon, PencilIcon } from "@/components/icons";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
 export function GoalsList({ goals, currency }: { goals: SavingsGoal[]; currency: Currency }) {
@@ -89,7 +90,7 @@ function GoalCard({ goal, currency }: { goal: SavingsGoal; currency: Currency })
             <div className="text-sm font-bold tracking-tight text-ink">{goal.name}</div>
             <div className="text-[11px] font-medium text-ink-muted">
               {completed
-                ? "🎉 ¡Meta completada!"
+                ? "¡Meta completada!"
                 : daysLeft === null
                   ? "Sin fecha límite"
                   : daysLeft < 0
@@ -134,9 +135,9 @@ function GoalCard({ goal, currency }: { goal: SavingsGoal; currency: Currency })
               setError(null);
             }}
             aria-label="Cancelar"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-btn border border-line text-[13px] font-semibold text-ink"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-btn border border-line text-ink"
           >
-            ✕
+            <CloseIcon size={17} />
           </button>
           <button
             onClick={handleAmount}
@@ -174,7 +175,7 @@ function GoalCard({ goal, currency }: { goal: SavingsGoal; currency: Currency })
             aria-label={`Editar ${goal.name}`}
             className="flex h-[38px] w-11 shrink-0 items-center justify-center rounded-btn border border-line text-[13px]"
           >
-            ✏️
+            <PencilIcon size={17} />
           </button>
         </div>
       )}

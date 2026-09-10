@@ -9,7 +9,7 @@ import { parseMonthParam, shiftMonthParam } from "@/lib/month-param";
 import { TX_FILTERS, type TxFilter } from "@/lib/tx-filters";
 import { autoConfirmPending, confirmTransactionsBulk, syncNow } from "@/lib/actions";
 import { TxRow } from "@/components/tx-row";
-import { FilterIcon, RefreshIcon } from "@/components/icons";
+import { CheckCircleIcon, FilterIcon, RefreshIcon } from "@/components/icons";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { useToast } from "@/components/toast";
 
@@ -34,7 +34,7 @@ function EmptyState({
   if (filter === "pendientes") {
     return (
       <div className="px-5 py-12 text-center">
-        <p className="text-2xl">🎉</p>
+        <CheckCircleIcon size={30} className="mx-auto text-income" />
         <p className="mt-2 text-sm font-semibold text-ink">Nada por confirmar</p>
         <p className="mt-1 text-[13px] text-ink-muted">Todas tus transacciones están al día.</p>
       </div>

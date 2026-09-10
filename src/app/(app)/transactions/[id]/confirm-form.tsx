@@ -229,11 +229,11 @@ export function ConfirmForm({
               [
                 "Origen",
                 tx.source === "email"
-                  ? "✉️ Correo del banco"
+                  ? "Correo del banco"
                   : tx.source === "voice"
-                    ? "🎤 Atajo de voz"
+                    ? "Atajo de voz"
                     : tx.source === "manual"
-                      ? "✋ Manual"
+                      ? "Manual"
                       : "—",
               ],
             ] as const

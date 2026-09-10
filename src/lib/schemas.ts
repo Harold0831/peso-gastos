@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BANK_IDS } from "./banks";
+import { CATEGORY_ICON_KEYS } from "./category-icons";
 
 /**
  * Normaliza un monto tecleado a número, aceptando separador decimal por
@@ -147,12 +148,18 @@ export const recurringPaidSchema = z.object({
   status: z.enum(["paid", "pending"]),
 });
 
-/** Categoría personalizada del usuario (perfil → "Mis categorías"). El
- *  emoji y el color se eligen de paletas fijas en la UI, pero se validan
- *  igual aquí por si la request no viene del formulario. */
+/** Categoría personalizada del usuario (perfil → "Mis categorías"). El ícono
+ *  y el color se eligen de paletas fijas en la UI, pero se validan igual aquí
+ *  por si la request no viene del formulario — una server action es un
+ *  endpoint público.
+ *
+ *  `icon` es una CLAVE del catálogo (`"cart"`), no un emoji: se valida contra
+ *  la lista para que en la base no aparezca una clave que la app no sepa
+ *  dibujar. Por eso `CATEGORY_ICON_KEYS` vive en `lib/` y no en el archivo de
+ *  componentes — este schema lo importa sin arrastrar 18 SVG. */
 export const categorySchema = z.object({
   name: z.string().trim().min(1, "Escribe un nombre").max(24, "Máximo 24 caracteres"),
-  icon: z.string().trim().min(1, "Elige un emoji").max(4),
+  icon: z.enum(CATEGORY_ICON_KEYS, { message: "Elige un ícono" }),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Color inválido"),
 });
 

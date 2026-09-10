@@ -60,7 +60,7 @@ export function OnboardingCard({ gmailLinked }: OnboardingCardProps) {
   const bankNames = SUPPORTED_BANKS.map((b) => b.name).join(", ");
   return (
     <section className="mt-3.5 rounded-card border border-line bg-card p-5">
-      <h2 className="text-[15px] font-bold tracking-tight text-ink">Bienvenido a Peso 👋</h2>
+      <h2 className="text-[15px] font-bold tracking-tight text-ink">Bienvenido a Peso</h2>
       <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
         Conecta tu correo y tus gastos se registran solos cuando el banco te notifica.
       </p>

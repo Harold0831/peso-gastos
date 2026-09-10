@@ -71,6 +71,7 @@ src/
 │   ├── data.ts             # Lecturas, acotadas al usuario en sesión
 │   ├── actions.ts          # Server actions de mutación, acotadas al usuario
 │   ├── banks.ts            # Catálogo de bancos (ids/nombres) — client-safe
+│   ├── category-icons.ts   # Claves de los íconos de categoría — client-safe
 │   ├── exchange-rate.ts    # Tasa USD→DOP con cache diaria (tabla exchange_rates)
 │   ├── api-token.ts        # Tokens de API por usuario (hash SHA-256) para el Shortcut
 │   ├── users.ts            # upsert desde Google, gmail_accounts, requireUserId()
@@ -120,6 +121,7 @@ supabase/
 ├── migrations/0013_...sql   # users.password_hash (login con correo)
 ├── migrations/0014_...sql   # rate_limits + check_rate_limit() (freno por IP)
 ├── migrations/0015_...sql   # auto_confirmed + users.auto_confirm_enabled
+├── migrations/0016_...sql   # categories.icon: de emoji a claves de SVG
 └── seed.sql                 # Categorías por defecto (globales, user_id null)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
@@ -981,6 +983,48 @@ activa el bloqueo por el `useState(false)` inicial del gate.
   - Lo único que sigue siendo claro en los dos temas es el `manifest.ts`
     (`theme_color`/`background_color`): es estático, se usa para el splash de
     instalación y no puede leer la preferencia del usuario.
+- **Sin emoji en la interfaz** (2026-09-10): los emoji se cambiaron por SVG de
+  trazo (`components/icons.tsx` + `components/category-icons.tsx`). No es solo
+  gusto: un emoji lo dibuja CADA sistema operativo a su manera (el mismo 🛍️ no
+  se parece en iPhone y en Android), no se repinta con el tema — sobre fondo
+  oscuro queda como una calcomanía brillante — y desentona con una interfaz que
+  es toda de trazo lineal.
+  - **Las metas de ahorro SÍ conservan su emoji** (`savings_goals.icon`,
+    `GOAL_ICONS`): ahí el ícono es una decisión personal del usuario sobre SU
+    meta ("🏝️ Viaje a Punta Cana"), no parte del vocabulario visual de la app.
+  - **`categories.icon` guarda una CLAVE** (`"cart"`), no un emoji ni markup
+    (migración `0016`). El catálogo vive en el código: `lib/category-icons.ts`
+    tiene las claves y `categoryIconKey()`, `components/category-icons.tsx` los
+    dibujos. Separados por la misma razón que `banks.ts` de `bank-parser.ts`:
+    `schemas.ts` valida la clave con `z.enum(CATEGORY_ICON_KEYS)` sin arrastrar
+    18 SVG de React a las server actions y las rutas de API.
+  - **`LEGACY_EMOJI` traduce lo que la migración no alcance** (una categoría
+    creada entre el deploy y la corrida, un backup restaurado, un emoji
+    tecleado a mano en el campo libre que el selector tenía antes). El mapa del
+    código y el `case` de la migración son dos sitios que pueden
+    desincronizarse en silencio, así que **`category-icons.test.ts` lee el .sql
+    y falla si divergen** — mismo criterio que `theme.test.ts` con la paleta
+    oscura. Verificado cambiando a mano `'coffee'` por `'cafe'` en la
+    migración: fallan dos tests nombrando la clave.
+  - **El selector de categoría es una rejilla cerrada**, no el campo de emoji
+    libre de antes: solo ofrece lo que la app sabe dibujar, así que no hay
+    forma de elegir algo que luego se vea como un cuadrito.
+  - **El glifo de categoría se pinta con un token del tema, NO con
+    `category.color`.** Esos colores se eligieron mirando el tema claro, y los
+    grises del seed (`#475569`, `#6B7280`) sobre fondo oscuro quedan casi
+    invisibles — se vio en la captura, no en el código. La regla que quedó: el
+    ícono identifica, el color informa, y el color sigue llevando dato donde
+    importa (las barras del presupuesto y el donut).
+  - **`AttentionItem` ya no lleva `icon`**: la campanita elige el SVG según
+    `kind`. Guardar un emoji en `data.ts` era arrastrar decoración por la
+    frontera RSC y dejar dos sitios capaces de desincronizarse.
+  - Los signos TIPOGRÁFICOS se quedan (`✓` dentro de una frase, `−`, `‹ ›`,
+    `≈`, `▲▼`): son texto, no dibujos, y heredan la fuente y el color.
+- **Área táctil de 44px** en todo botón de solo ícono (el mínimo de las guías
+  de Apple; varios estaban en 32-36px). Donde 44px de ANCHO le robaban espacio
+  al texto —el ✕ de la bandeja de notificaciones truncaba el título— el botón
+  crece con un margen negativo que lo mete dentro del padding de la fila: crece
+  la zona que se puede tocar, no el hueco que ocupa.
 - **Convenciones de UX** (2026-07-18): toda mutación confirma con un toast
   (`useToast()`, provider en el layout de `(app)`) — nunca terminar una
   acción en silencio. Los banners promocionales/opcionales del dashboard

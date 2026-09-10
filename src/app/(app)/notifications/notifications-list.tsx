@@ -5,7 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { AttentionItem } from "@/lib/data";
 import { dismissNotifications } from "@/lib/actions";
-import { ChevronIcon } from "@/components/icons";
+import {
+  AlertIcon,
+  BellIcon,
+  ChevronIcon,
+  ClockIcon,
+  CloseIcon,
+  MailIcon,
+} from "@/components/icons";
 import { useToast } from "@/components/toast";
 
 export function NotificationsList({ items }: { items: AttentionItem[] }) {
@@ -30,7 +37,7 @@ export function NotificationsList({ items }: { items: AttentionItem[] }) {
   if (items.length === 0) {
     return (
       <div className="px-5 py-20 text-center">
-        <p className="text-3xl">🔔</p>
+        <BellIcon size={34} className="mx-auto text-ink-muted" />
         <p className="mt-3 text-sm font-semibold text-ink">Todo al día</p>
         <p className="mt-1 text-[13px] text-ink-muted">
           Aquí verás transacciones por confirmar y avisos de tus presupuestos.
@@ -70,11 +77,19 @@ export function NotificationsList({ items }: { items: AttentionItem[] }) {
               className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3.5 transition active:bg-background"
             >
               <span
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-pill text-base ${
-                  item.kind === "pending" ? "bg-accent/10" : "bg-warning/10"
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-pill ${
+                  item.kind === "pending"
+                    ? "bg-accent/10 text-accent"
+                    : "bg-warning/10 text-warning"
                 }`}
               >
-                {item.icon}
+                {item.kind === "gmail" ? (
+                  <MailIcon size={18} />
+                ) : item.kind === "pending" ? (
+                  <ClockIcon size={18} />
+                ) : (
+                  <AlertIcon size={18} />
+                )}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] font-semibold text-ink">
@@ -91,9 +106,13 @@ export function NotificationsList({ items }: { items: AttentionItem[] }) {
                   dismiss([{ id: item.id, context: item.context }], "Notificación descartada")
                 }
                 disabled={busy}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill text-base text-ink-muted disabled:opacity-50"
+                // 44px de área táctil (el mínimo de las guías de Apple) sin
+                // robarle 44px de ancho al título: el margen negativo mete el
+                // botón dentro del `pr-2` de la fila, así que crece la zona
+                // que se puede tocar, no el hueco que ocupa.
+                className="-mr-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-pill text-ink-muted disabled:opacity-50"
               >
-                ✕
+                <CloseIcon size={17} />
               </button>
             )}
           </div>

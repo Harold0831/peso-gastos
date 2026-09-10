@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CloseIcon } from "./icons";
 
 /**
  * Envuelve un banner/aviso con un botón ✕ que lo oculta para siempre
@@ -40,9 +41,9 @@ export function Dismissible({
           localStorage.setItem(storageKey, "1");
           setVisible(false);
         }}
-        className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-pill text-base leading-none text-ink-muted"
+        className="absolute right-0.5 top-0.5 flex h-10 w-10 items-center justify-center rounded-pill text-ink-muted"
       >
-        ✕
+        <CloseIcon size={16} />
       </button>
     </div>
   );

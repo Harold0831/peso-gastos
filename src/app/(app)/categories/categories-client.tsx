@@ -13,9 +13,8 @@ import {
 import { useToast } from "@/components/toast";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PencilIcon, TrashIcon, UndoIcon } from "@/components/icons";
-
-/** Emojis sugeridos para arrancar rápido; igual se puede teclear cualquiera. */
-const EMOJI_PRESETS = ["🐶", "🏋️", "☕", "🎁", "✈️", "🍔", "💅", "🎮", "🏠", "👶", "💰", "🎓"];
+import { CategoryIcon } from "@/components/category-icons";
+import { CATEGORY_ICON_KEYS, FALLBACK_CATEGORY_ICON } from "@/lib/category-icons";
 
 /** Paleta de colores para las categorías (evita que elijan un hex feo o
  *  ilegible; los tonos combinan con el resto de la app). */
@@ -171,11 +170,13 @@ function GlobalRow({
 
   return (
     <li className={`flex items-center gap-3 px-4 py-3 ${divider ? "border-b border-line" : ""}`}>
-      <span
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill text-base"
-        style={{ backgroundColor: `${category.color}1A` }}
-      >
-        {category.icon}
+      {/* El glifo va en un token del tema y NO en `category.color`: esos
+          colores se eligieron para el tema claro, y los grises del seed
+          (#475569, #6B7280) quedan casi invisibles sobre fondo oscuro. El
+          ícono identifica; el color informa, y sigue haciéndolo donde lleva
+          dato de verdad (las barras del presupuesto y el donut). */}
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill bg-background text-ink-muted">
+        <CategoryIcon icon={category.icon} size={17} />
       </span>
       <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">
         {category.name}
@@ -185,7 +186,7 @@ function GlobalRow({
         onClick={() => setConfirming(true)}
         disabled={busy || demoMode}
         aria-label={`Eliminar ${category.name}`}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill text-ink-muted transition active:bg-background disabled:opacity-50"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-pill text-ink-muted transition active:bg-background disabled:opacity-50"
       >
         <TrashIcon size={19} />
       </button>
@@ -270,11 +271,13 @@ function CustomRow({
 
   return (
     <li className={`flex items-center gap-3 px-4 py-3 ${divider ? "border-b border-line" : ""}`}>
-      <span
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill text-base"
-        style={{ backgroundColor: `${category.color}1A` }}
-      >
-        {category.icon}
+      {/* El glifo va en un token del tema y NO en `category.color`: esos
+          colores se eligieron para el tema claro, y los grises del seed
+          (#475569, #6B7280) quedan casi invisibles sobre fondo oscuro. El
+          ícono identifica; el color informa, y sigue haciéndolo donde lleva
+          dato de verdad (las barras del presupuesto y el donut). */}
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill bg-background text-ink-muted">
+        <CategoryIcon icon={category.icon} size={17} />
       </span>
       <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">
         {category.name}
@@ -284,7 +287,7 @@ function CustomRow({
         onClick={onEdit}
         disabled={deleting || demoMode}
         aria-label={`Editar ${category.name}`}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill text-ink-muted transition active:bg-background disabled:opacity-50"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-pill text-ink-muted transition active:bg-background disabled:opacity-50"
       >
         <PencilIcon size={19} />
       </button>
@@ -293,7 +296,7 @@ function CustomRow({
         onClick={() => setConfirming(true)}
         disabled={deleting || demoMode}
         aria-label={`Eliminar ${category.name}`}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill text-ink-muted transition active:bg-background disabled:opacity-50"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-pill text-ink-muted transition active:bg-background disabled:opacity-50"
       >
         <TrashIcon size={19} />
       </button>
@@ -326,7 +329,7 @@ function CategoryForm({
   const router = useRouter();
   const toast = useToast();
   const [name, setName] = useState(category?.name ?? "");
-  const [icon, setIcon] = useState(category?.icon ?? "🏷️");
+  const [icon, setIcon] = useState(category?.icon ?? FALLBACK_CATEGORY_ICON);
   const [color, setColor] = useState(category?.color ?? COLOR_PRESETS[0]);
   const [error, setError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
@@ -334,7 +337,7 @@ function CategoryForm({
   // Al cambiar de categoría en edición, recarga los valores del formulario.
   useEffect(() => {
     setName(category?.name ?? "");
-    setIcon(category?.icon ?? "🏷️");
+    setIcon(category?.icon ?? FALLBACK_CATEGORY_ICON);
     setColor(category?.color ?? COLOR_PRESETS[0]);
     setError(null);
   }, [category]);
@@ -364,11 +367,8 @@ function CategoryForm({
     <div className="mt-2.5 rounded-card border border-line bg-card p-4">
       {/* Vista previa en vivo */}
       <div className="mb-4 flex items-center gap-2.5">
-        <span
-          className="flex h-9 w-9 items-center justify-center rounded-pill text-lg"
-          style={{ backgroundColor: `${color}1A` }}
-        >
-          {icon}
+        <span className="flex h-9 w-9 items-center justify-center rounded-pill bg-background text-ink-muted">
+          <CategoryIcon icon={icon} size={19} />
         </span>
         <span
           className="rounded-pill px-3.5 py-2 text-xs font-semibold text-white"
@@ -391,29 +391,33 @@ function CategoryForm({
       />
 
       <label className="mb-1.5 mt-4 block text-[11px] font-semibold uppercase tracking-wide text-ink">
-        Emoji
+        Ícono
       </label>
-      <div className="flex items-center gap-2">
-        <input
-          value={icon}
-          onChange={(e) => setIcon(e.target.value.slice(0, 4))}
-          aria-label="Emoji de la categoría"
-          className="w-14 rounded-btn border border-line bg-surface p-2 text-center text-xl outline-none focus:border-accent"
-        />
-        <div className="flex flex-1 flex-wrap gap-1.5">
-          {EMOJI_PRESETS.map((e) => (
+      {/* Rejilla cerrada en vez del campo de emoji libre que había antes: el
+          catálogo es el que la app sabe dibujar, así que no hay forma de
+          elegir algo que luego se vea como un cuadrito. 44px de lado = el
+          mínimo táctil de las guías de Apple. */}
+      <div role="radiogroup" aria-label="Ícono de la categoría" className="flex flex-wrap gap-1.5">
+        {CATEGORY_ICON_KEYS.map((key) => {
+          const active = icon === key;
+          return (
             <button
-              key={e}
+              key={key}
               type="button"
-              onClick={() => setIcon(e)}
-              className={`flex h-8 w-8 items-center justify-center rounded-pill text-base transition ${
-                icon === e ? "bg-accent/15 ring-1 ring-accent" : "bg-surface"
+              role="radio"
+              aria-checked={active}
+              aria-label={key}
+              onClick={() => setIcon(key)}
+              className={`flex h-11 w-11 items-center justify-center rounded-btn border transition ${
+                active
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-line bg-surface text-ink-muted"
               }`}
             >
-              {e}
+              <CategoryIcon icon={key} size={20} />
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
       <label className="mb-1.5 mt-4 block text-[11px] font-semibold uppercase tracking-wide text-ink">

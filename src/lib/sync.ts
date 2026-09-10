@@ -109,7 +109,7 @@ async function notifyBudgetForAutoConfirmed(
       if (!crossing) continue;
 
       await sendPushToUser(userId, {
-        title: "⚠️ Presupuesto",
+        title: "Presupuesto",
         body: budgetAlertBody(
           crossing,
           name,

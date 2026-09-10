@@ -219,7 +219,7 @@ function CardRow({
           onClick={onEdit}
           disabled={deleting || demoMode}
           aria-label={`Editar ${card.nickname}`}
-          className="flex h-8 w-8 items-center justify-center rounded-pill text-ink-muted transition active:bg-background disabled:opacity-50"
+          className="flex h-11 w-11 items-center justify-center rounded-pill text-ink-muted transition active:bg-background disabled:opacity-50"
         >
           <PencilIcon size={18} />
         </button>
@@ -228,7 +228,7 @@ function CardRow({
           onClick={() => setConfirming(true)}
           disabled={deleting || demoMode}
           aria-label={`Eliminar ${card.nickname}`}
-          className="flex h-8 w-8 items-center justify-center rounded-pill text-ink-muted transition active:bg-background disabled:opacity-50"
+          className="flex h-11 w-11 items-center justify-center rounded-pill text-ink-muted transition active:bg-background disabled:opacity-50"
         >
           <TrashIcon size={18} />
         </button>

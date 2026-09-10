@@ -14,13 +14,20 @@ function daysAgo(days: number, hour: number, minute: number): string {
 }
 
 export const MOCK_CATEGORIES: Category[] = [
-  { id: "c1", name: "Alimentación", icon: "🛒", color: "#2563EB", is_default: true, user_id: null },
-  { id: "c2", name: "Transporte", icon: "🚗", color: "#6B7280", is_default: true, user_id: null },
-  { id: "c3", name: "Salud", icon: "💊", color: "#16A34A", is_default: true, user_id: null },
+  {
+    id: "c1",
+    name: "Alimentación",
+    icon: "cart",
+    color: "#2563EB",
+    is_default: true,
+    user_id: null,
+  },
+  { id: "c2", name: "Transporte", icon: "car", color: "#6B7280", is_default: true, user_id: null },
+  { id: "c3", name: "Salud", icon: "health", color: "#16A34A", is_default: true, user_id: null },
   {
     id: "c4",
     name: "Entretenimiento",
-    icon: "🎬",
+    icon: "play",
     color: "#8B7355",
     is_default: true,
     user_id: null,
@@ -28,22 +35,22 @@ export const MOCK_CATEGORIES: Category[] = [
   {
     id: "c5",
     name: "Servicios/Facturas",
-    icon: "📄",
+    icon: "receipt",
     color: "#94A3B8",
     is_default: true,
     user_id: null,
   },
-  { id: "c6", name: "Compras", icon: "🛍️", color: "#475569", is_default: true, user_id: null },
+  { id: "c6", name: "Compras", icon: "bag", color: "#475569", is_default: true, user_id: null },
   {
     id: "c7",
     name: "Transferencias",
-    icon: "🔁",
+    icon: "transfer",
     color: "#64748B",
     is_default: true,
     user_id: null,
   },
-  { id: "c8", name: "Educación", icon: "📚", color: "#7C6FBF", is_default: true, user_id: null },
-  { id: "c9", name: "Otros", icon: "📌", color: "#9CA3AF", is_default: true, user_id: null },
+  { id: "c8", name: "Educación", icon: "book", color: "#7C6FBF", is_default: true, user_id: null },
+  { id: "c9", name: "Otros", icon: "tag", color: "#9CA3AF", is_default: true, user_id: null },
 ];
 
 const tx = (
