@@ -1071,9 +1071,19 @@ activa el bloqueo por el `useState(false)` inicial del gate.
     contenido que scrollea por detrás: una media luna con trozos de texto
     pasando por dentro. Tapar no es mentir — la barra ya es opaca sobre ese
     mismo contenido.
-  - **`--notch-y` y la posición del FAB tienen que coincidir.** El botón se
-    centra en el MISMO punto que el círculo de la máscara; si uno se mueve sin
-    el otro, el anillo deja de ser uniforme y se nota enseguida.
+  - **`--notch-r` y `--notch-y` viven en el `<nav>`, no en `.nav-notch`.** Las
+    leen tanto la máscara como el botón: el FAB se posiciona con
+    `top-[var(--notch-y)]`, así que mover la muesca mueve el botón con ella.
+    Antes eran dos números que había que acordarse de cambiar a la vez, y
+    desalinearlos rompía el anillo sin que nada lo impidiera.
+  - **El safe area NO se suma a un padding propio.** La barra tenía `pb-safe`
+    (~34px en iPhone) MÁS un `pb-2`: casi 42px de vacío bajo las etiquetas, que
+    en el teléfono se ve como una franja muerta. Ahora el padding inferior es
+    `max(0.5rem, calc(env(safe-area-inset-bottom) - 8px))` — se le restan 8px
+    porque el indicador de inicio ocupa bastante menos que el inset completo, y
+    el `max` mantiene un margen normal donde no hay safe area (escritorio).
+    Esto solo lo ve un teléfono real: en Chromium el inset es 0 y el problema
+    es invisible.
   - **`shadow-fab` pasó de halo azul a sombra neutra.** Con la barra plana el
     resplandor daba la profundidad; con la muesca la da el recorte, y el halo
     azul de 12px se comía justo el arco de `--line` que hay que ver — invisible

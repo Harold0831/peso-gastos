@@ -68,10 +68,10 @@ export function BottomNav() {
     // abre la mordida al FAB. La barra queda transparente por debajo de esa
     // capa, así que el contenido de la página se ve a través de la muesca —
     // que es justo lo que hace que el botón se lea como "encima" de la barra.
-    <nav className="fixed inset-x-0 bottom-0 z-20 pb-safe">
+    <nav className="nav-with-notch fixed inset-x-0 bottom-0 z-20">
       <span aria-hidden className="nav-notch" />
 
-      <div className="relative mx-auto flex max-w-lg items-center justify-around pb-2 pt-2.5">
+      <div className="relative mx-auto flex max-w-lg items-center justify-around pt-2.5">
         {left.map(renderItem)}
 
         {/* Hueco del mismo ancho que el FAB: el botón está posicionado en
@@ -82,10 +82,10 @@ export function BottomNav() {
         <Link
           href="/transactions/new"
           aria-label="Agregar transacción"
-          // `top-[var(--notch-y)]` + `-translate-y-1/2` centra el botón en el
-          // MISMO punto que el círculo de la máscara. Si uno se mueve sin el
-          // otro, el anillo deja de ser uniforme y se nota enseguida.
-          className="absolute left-1/2 top-[-8px] flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-pill bg-accent-solid text-white shadow-fab transition active:scale-95"
+          // Lee `--notch-y` del <nav>, la MISMA variable que posiciona el
+          // círculo de la máscara: así el botón y la mordida no pueden
+          // desalinearse por tocar solo uno de los dos.
+          className="absolute left-1/2 top-[var(--notch-y)] flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-pill bg-accent-solid text-white shadow-fab transition active:scale-95"
         >
           <PlusIcon size={26} />
         </Link>

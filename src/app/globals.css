@@ -241,17 +241,29 @@ body {
 
    Si el navegador no soporta máscaras, la capa de superficie tapa a las otras
    dos salvo ese 1px de arriba: queda la barra plana de siempre, sin muesca. */
-.nav-notch {
+/* La barra que lleva la muesca. Las dos variables viven AQUÍ, en el padre,
+   para que las lean tanto la máscara como el botón: si cada uno tuviera su
+   propio número, moverlos por separado desalinearía el anillo y no habría
+   nada que lo impidiera. */
+.nav-with-notch {
   --notch-r: 37px;
+  /* Centro del círculo, medido desde el borde superior de la barra. Negativo
+     = por encima: cuanto más negativo, más sobresale el botón y menos hondo
+     muerde la barra. */
+  --notch-y: -2px;
+  /* El safe area del iPhone (~34px) NO se suma a un padding propio: eso
+     dejaba casi 42px de vacío bajo las etiquetas. Se le restan 8px porque el
+     indicador de inicio ocupa bastante menos que el inset completo, y el
+     `max` mantiene un margen normal donde no hay safe area (escritorio). */
+  padding-bottom: max(0.5rem, calc(env(safe-area-inset-bottom, 0px) - 8px));
+}
+
+.nav-notch {
   /* El fondo de la PÁGINA rellena la mordida. Sin esto el anillo entre el
      botón y la barra es transparente y deja ver el contenido que scrollea por
      detrás: una media luna con trozos de texto pasando por dentro. Tapar no
      es mentir — la barra ya es opaca sobre ese mismo contenido. */
   background-color: var(--background);
-  /* Centro del círculo, medido desde el borde superior de la barra. Negativo
-     = por encima, para que el botón sobresalga y la mordida no se coma media
-     barra. Debe coincidir con la posición del FAB en bottom-nav.tsx. */
-  --notch-y: -8px;
   position: absolute;
   inset: 0;
 }
