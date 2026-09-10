@@ -5,7 +5,7 @@ import {
   getPendingTransactions,
   getTransactions,
 } from "@/lib/data";
-import { parseMonthParam } from "@/lib/month-param";
+import { monthToParam, parseMonthParam } from "@/lib/month-param";
 import { parseFilterParam } from "@/lib/tx-filters";
 import { TxList } from "./tx-list";
 
@@ -47,7 +47,10 @@ export default async function TransactionsPage({
   return (
     <TxList
       transactions={transactions}
-      month={month}
+      // Al cliente va el mes como TEXTO, nunca como Date: un Date cruza la
+      // frontera RSC como instante y el navegador lo reinterpreta en su zona
+      // horaria (ver shiftMonthParam en month-param.ts).
+      monthParam={monthToParam(month)}
       filter={activeFilter}
       initialCard={card}
       pendingCount={pendingCount}

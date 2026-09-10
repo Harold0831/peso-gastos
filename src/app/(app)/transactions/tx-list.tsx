@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { addMonths, subMonths } from "date-fns";
 import type { Transaction } from "@/lib/types";
 import { formatDayLabel, formatMonthLabel } from "@/lib/format";
-import { monthToParam } from "@/lib/month-param";
+import { parseMonthParam, shiftMonthParam } from "@/lib/month-param";
 import { TX_FILTERS, type TxFilter } from "@/lib/tx-filters";
 import { confirmTransactionsBulk, syncNow } from "@/lib/actions";
 import { TxRow } from "@/components/tx-row";
@@ -72,7 +71,7 @@ function EmptyState({
 
 export function TxList({
   transactions,
-  month,
+  monthParam,
   filter,
   initialCard,
   pendingCount,
@@ -84,8 +83,16 @@ export function TxList({
    * pendientes si la pestaña es "Por confirmar". Aquí no se filtra por fecha.
    */
   transactions: Transaction[];
-  /** Mes visible, resuelto desde `?m=YYYY-MM`. */
-  month: Date;
+  /**
+   * Mes visible como TEXTO "YYYY-MM", no como `Date`.
+   *
+   * Es deliberado: un `Date` cruza la frontera servidor→cliente como
+   * instante, y el navegador lo reinterpreta en su zona horaria. El servidor
+   * corre en UTC, así que "1 de septiembre" llegaba a RD (UTC-4) como el 31
+   * de agosto a las 8 p. m. y rompía la cabecera y las flechas (ver
+   * `shiftMonthParam`).
+   */
+  monthParam: string;
   /** Pestaña activa, resuelta desde `?filter=`. */
   filter: Filter;
   /** Últimos 4 de la tarjeta a preseleccionar (llega desde /cards). */
@@ -129,13 +136,13 @@ export function TxList({
    * servidor, así que no pueden quedarse en estado local; categoría y tarjeta
    * sí, porque solo acotan lo que ya se cargó.
    */
-  const navigate = (next: { filter?: Filter; month?: Date }) => {
+  const navigate = (next: { filter?: Filter; month?: string }) => {
     const nextFilter = next.filter ?? filter;
-    const nextMonth = next.month ?? month;
+    const nextMonth = next.month ?? monthParam;
     const params = new URLSearchParams();
     if (nextFilter !== "todos") params.set("filter", nextFilter);
     // "Por confirmar" es global: llevar el mes en la URL solo confundiría.
-    if (nextFilter !== "pendientes") params.set("m", monthToParam(nextMonth));
+    if (nextFilter !== "pendientes") params.set("m", nextMonth);
     const query = params.toString();
     startNavigation(() => {
       router.replace(query ? `/transactions?${query}` : "/transactions", { scroll: false });
@@ -274,17 +281,17 @@ export function TxList({
         {filter !== "pendientes" && (
           <div className="flex items-center justify-center gap-2 pb-3">
             <button
-              onClick={() => navigate({ month: subMonths(month, 1) })}
+              onClick={() => navigate({ month: shiftMonthParam(monthParam, -1) })}
               aria-label="Mes anterior"
               className="flex h-9 w-9 items-center justify-center text-lg text-ink-muted"
             >
               ‹
             </button>
             <span className="min-w-32 text-center text-[14px] font-bold tracking-tight text-ink">
-              {formatMonthLabel(month)}
+              {formatMonthLabel(parseMonthParam(monthParam))}
             </span>
             <button
-              onClick={() => navigate({ month: addMonths(month, 1) })}
+              onClick={() => navigate({ month: shiftMonthParam(monthParam, 1) })}
               aria-label="Mes siguiente"
               className="flex h-9 w-9 items-center justify-center text-lg text-ink-muted"
             >
@@ -377,7 +384,7 @@ export function TxList({
           {groups.length === 0 ? (
             <EmptyState
               filter={filter}
-              monthLabel={formatMonthLabel(month)}
+              monthLabel={formatMonthLabel(parseMonthParam(monthParam))}
               syncing={syncing}
               onSync={handleSync}
             />
