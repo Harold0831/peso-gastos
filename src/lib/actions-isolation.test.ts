@@ -134,6 +134,17 @@ async function invocaciones(): Promise<Record<string, () => Promise<unknown>>> {
       a.updateCard({ id: "card-1", nickname: "Visa", type: "debit", color: "#2563EB" }),
     deleteCard: () => a.deleteCard("card-1"),
     setEnabledBanks: () => a.setEnabledBanks({ banks: ["qik"] }),
+    setAutoConfirmEnabled: () => a.setAutoConfirmEnabled(false),
+    // Sin historial sembrado no habría reglas que aplicar y la action se
+    // pararía antes de tocar las pendientes — pasaría en vacío.
+    autoConfirmPending: () => {
+      fake.seed("transactions", [
+        { id: "tx-1", merchant: "Netflix", category: "Entretenimiento", amount: 649 },
+        { id: "tx-2", merchant: "Netflix", category: "Entretenimiento", amount: 649 },
+      ]);
+      fake.seed("categories", [{ id: "cat-1", name: "Entretenimiento" }]);
+      return a.autoConfirmPending();
+    },
     createCategory: () => a.createCategory({ name: "Mascota", icon: "🐶", color: "#2563EB" }),
     updateCategory: () =>
       a.updateCategory({ id: "cat-1", name: "Mascota", icon: "🐶", color: "#2563EB" }),

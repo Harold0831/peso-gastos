@@ -27,6 +27,11 @@ export interface Transaction {
   category: string | null;
   ai_suggested_category: string | null;
   confirmed: boolean;
+  /** La confirmó Peso sola, por coincidir con un comercio que el usuario ya
+   *  había categorizado varias veces (ver `merchant-history.ts`). No se puede
+   *  deducir de `confirmed`: hace falta distinguir lo que decidió la persona
+   *  de lo que decidió la app con su dinero. Ver migración 0015. */
+  auto_confirmed: boolean;
   notes: string | null;
   source: TransactionSource | null;
   created_at: string;

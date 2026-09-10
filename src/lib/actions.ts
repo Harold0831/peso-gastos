@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
 import { AUTH_LIMITS, RATE_LIMITED_MESSAGE, checkRateLimit } from "./rate-limit";
+import { budgetAlertBody, detectBudgetCrossing } from "./budget-alert";
+import { findAutoConfirmable } from "./auto-confirm";
 import { deleteUserAccount, requireUserId } from "./users";
 import {
   budgetSchema,
@@ -106,16 +108,18 @@ async function maybeNotifyBudgetThreshold(categoryName: string, txIds: string[])
     if (added <= 0) return;
 
     const limit = entry.budget.limit_amount;
-    const after = entry.spent / limit;
-    const before = (entry.spent - added) / limit;
+    // La regla vive en budget-alert.ts porque el sync automático la necesita
+    // igual y no puede reusar esta función (corre sin sesión).
+    const crossing = detectBudgetCrossing(limit, entry.spent, added);
+    if (!crossing) return;
 
-    let body: string | null = null;
-    if (before < 1 && after >= 1) {
-      body = `Superaste el presupuesto de ${categoryName}: ${formatMoney(entry.spent, home)} de ${formatMoney(limit, home)}`;
-    } else if (before < 0.8 && after >= 0.8) {
-      body = `Vas por el ${Math.round(after * 100)}% del presupuesto de ${categoryName}`;
-    }
-    if (!body) return;
+    const body = budgetAlertBody(
+      crossing,
+      categoryName,
+      formatMoney(entry.spent, home),
+      formatMoney(limit, home),
+      Math.round((entry.spent / limit) * 100),
+    );
 
     await sendPushToUser(userId, { title: "⚠️ Presupuesto", body, url: "/budget" });
   } catch (err) {
@@ -134,6 +138,9 @@ export async function confirmTransaction(input: unknown): Promise<ActionResult> 
       category: parsed.data.category,
       notes: parsed.data.notes || null,
       confirmed: true,
+      // Si la persona pasó por aquí, la decisión ya es suya: la fila deja de
+      // llevar el sello de "esto lo decidió Peso".
+      auto_confirmed: false,
       ...(parsed.data.amount !== undefined && { amount: parsed.data.amount }),
       ...(parsed.data.merchant !== undefined && { merchant: parsed.data.merchant }),
       ...(parsed.data.date !== undefined && { date: parsed.data.date }),
@@ -164,12 +171,77 @@ export async function confirmTransactionsBulk(input: {
 
   const { error } = await getSupabaseAdmin()
     .from("transactions")
-    .update({ category: parsed.data.category, confirmed: true })
+    .update({ category: parsed.data.category, confirmed: true, auto_confirmed: false })
     .in("id", parsed.data.ids)
     .eq("user_id", await requireUserId());
   if (error) return { ok: false, error: friendlyDbError(error, "confirmTransactionsBulk") };
 
   await maybeNotifyBudgetThreshold(parsed.data.category, parsed.data.ids);
+  revalidateAll();
+  return { ok: true };
+}
+
+/**
+ * Aplica las reglas de auto-confirmación a la cola que YA está pendiente
+ * ("Confirmar N de comercios conocidos" en /transactions).
+ *
+ * Sin esto la función solo serviría de aquí en adelante y no le resolvería
+ * nada a quien más la necesita: el usuario que ya acumuló cientos de
+ * pendientes es justo el que reportó el problema.
+ *
+ * Qué confirmar lo decide el SERVIDOR (`findAutoConfirmable`), no la lista de
+ * ids que mandaría el navegador: una server action es un endpoint público, y
+ * aceptar "confirma estas con esta categoría" sería aceptar una orden en vez
+ * de un dato. Agrupa por categoría porque el aviso de presupuesto es por
+ * categoría y `confirmTransactionsBulk` ya sabe hacer justo eso.
+ */
+export async function autoConfirmPending(): Promise<ActionResult & { confirmed?: number }> {
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const userId = await requireUserId();
+  const matches = await findAutoConfirmable(userId);
+  if (matches.length === 0) return { ok: true, confirmed: 0 };
+
+  const byCategory = new Map<string, string[]>();
+  for (const m of matches) {
+    byCategory.set(m.category, [...(byCategory.get(m.category) ?? []), m.id]);
+  }
+
+  const supabase = getSupabaseAdmin();
+  let confirmed = 0;
+  for (const [category, ids] of byCategory) {
+    const { error } = await supabase
+      .from("transactions")
+      .update({ category, confirmed: true, auto_confirmed: true })
+      .in("id", ids)
+      .eq("user_id", userId);
+    if (error) return { ok: false, error: friendlyDbError(error, "autoConfirmPending") };
+    confirmed += ids.length;
+    await maybeNotifyBudgetThreshold(category, ids);
+  }
+
+  revalidateAll();
+  return { ok: true, confirmed };
+}
+
+/**
+ * Enciende o apaga la auto-confirmación de este usuario (Perfil).
+ *
+ * Apagable a propósito: es automatización silenciosa sobre datos financieros
+ * y quien no la quiera debe poder quitarla sin pedirle permiso a nadie. No
+ * toca las transacciones ya confirmadas — apagarla decide el futuro, no
+ * revierte el pasado.
+ */
+export async function setAutoConfirmEnabled(enabled: unknown): Promise<ActionResult> {
+  if (typeof enabled !== "boolean") return { ok: false, error: "Valor inválido" };
+  if (!isSupabaseConfigured()) return { ok: false, error: MOCK_MODE_ERROR };
+
+  const { error } = await getSupabaseAdmin()
+    .from("users")
+    .update({ auto_confirm_enabled: enabled })
+    .eq("id", await requireUserId());
+  if (error) return { ok: false, error: friendlyDbError(error, "setAutoConfirmEnabled") };
+
   revalidateAll();
   return { ok: true };
 }

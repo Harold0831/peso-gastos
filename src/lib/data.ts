@@ -4,6 +4,7 @@ import { endOfMonth, startOfMonth } from "date-fns";
 import { getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
 import { getHomeCurrencyForUser, requireUserId } from "./users";
 import { getLatestCachedRate } from "./exchange-rate";
+import { findAutoConfirmable, isAutoConfirmEnabled } from "./auto-confirm";
 import {
   MOCK_BUDGETS,
   MOCK_CARDS,
@@ -177,6 +178,33 @@ export async function getPendingTransactions(): Promise<Transaction[]> {
     .limit(PENDING_LIMIT);
   if (error) throw new Error(`Error cargando pendientes: ${error.message}`);
   return (data ?? []).map(normalizeTransaction);
+}
+
+/**
+ * Estado de la auto-confirmación para la UI: si está encendida y cuántas
+ * pendientes se podrían confirmar solas ahora mismo.
+ *
+ * El conteo sale del mismo cálculo que ejecuta la acción, no de una
+ * estimación aparte: si el botón dice 44 y confirma 12, la función pierde la
+ * confianza que necesita para que alguien la deje encendida.
+ *
+ * Fallo suave: si algo falla, se devuelve 0 y el botón simplemente no
+ * aparece — nunca tumbar /transactions por una función opcional.
+ */
+export async function getAutoConfirmStatus(): Promise<{ enabled: boolean; pending: number }> {
+  if (!isSupabaseConfigured()) return { enabled: true, pending: 0 };
+
+  const userId = await requireUserId();
+  try {
+    const [enabled, matches] = await Promise.all([
+      isAutoConfirmEnabled(userId),
+      findAutoConfirmable(userId),
+    ]);
+    return { enabled, pending: enabled ? matches.length : 0 };
+  } catch (err) {
+    console.error("[getAutoConfirmStatus]", err);
+    return { enabled: true, pending: 0 };
+  }
 }
 
 /**
@@ -769,5 +797,7 @@ function normalizeTransaction(row: Record<string, unknown>): Transaction {
     amount: Number(t.amount),
     exchange_rate: t.exchange_rate === null ? null : Number(t.exchange_rate),
     available_balance: t.available_balance === null ? null : Number(t.available_balance),
+    // Las filas anteriores a la migración 0015 no traen la columna.
+    auto_confirmed: t.auto_confirmed ?? false,
   };
 }

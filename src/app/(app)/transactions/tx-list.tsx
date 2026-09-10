@@ -7,7 +7,7 @@ import type { Transaction } from "@/lib/types";
 import { formatDayLabel, formatMonthLabel } from "@/lib/format";
 import { parseMonthParam, shiftMonthParam } from "@/lib/month-param";
 import { TX_FILTERS, type TxFilter } from "@/lib/tx-filters";
-import { confirmTransactionsBulk, syncNow } from "@/lib/actions";
+import { autoConfirmPending, confirmTransactionsBulk, syncNow } from "@/lib/actions";
 import { TxRow } from "@/components/tx-row";
 import { FilterIcon, RefreshIcon } from "@/components/icons";
 import { PullToRefresh } from "@/components/pull-to-refresh";
@@ -75,6 +75,7 @@ export function TxList({
   filter,
   initialCard,
   pendingCount,
+  autoConfirmable,
   categories,
   cards,
 }: {
@@ -99,6 +100,13 @@ export function TxList({
   initialCard?: string;
   /** Total global de pendientes para el badge — no sale de `transactions`. */
   pendingCount: number;
+  /**
+   * Cuántas pendientes son de comercios que el usuario ya categorizó, o sea
+   * cuántas confirmaría de un toque el botón de ponerse al día. Lo calcula el
+   * servidor con la misma función que ejecuta la acción, para que el número
+   * del botón no mienta.
+   */
+  autoConfirmable: number;
   categories: string[];
   /** Tarjetas registradas; vacío = no se muestra el filtro por tarjeta. */
   cards: { last4: string; nickname: string }[];
@@ -119,6 +127,7 @@ export function TxList({
   const [bulkCategory, setBulkCategory] = useState<string | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkSaving, startBulkSaving] = useTransition();
+  const [autoConfirming, startAutoConfirm] = useTransition();
 
   const [category, setCategory] = useState<string | null>(null);
   // Tarjeta (last4). Llega preseleccionada al entrar desde /cards.
@@ -246,6 +255,23 @@ export function TxList({
     });
   };
 
+  const handleAutoConfirm = () => {
+    startAutoConfirm(async () => {
+      const result = await autoConfirmPending();
+      if (!result.ok) {
+        toast(result.error ?? "No se pudo confirmar", "error");
+        return;
+      }
+      const n = result.confirmed ?? 0;
+      toast(
+        n === 0
+          ? "No quedaba ninguna por confirmar"
+          : `✓ ${n} ${n === 1 ? "transacción confirmada" : "transacciones confirmadas"}`,
+      );
+      router.refresh();
+    });
+  };
+
   const handleSync = () => {
     startSync(async () => {
       const result = await syncNow();
@@ -347,6 +373,29 @@ export function TxList({
             )}
           </button>
         </div>
+
+        {/* Ponerse al día: la auto-confirmación solo actúa sobre lo que llega
+            de aquí en adelante, así que sin este botón no le resolvería nada a
+            quien ya arrastra cientos de pendientes — que es justo quien pidió
+            la función. No aparece en modo selección para no competir con la
+            confirmación manual que el usuario ya empezó. */}
+        {filter === "pendientes" && !selectionMode && autoConfirmable > 0 && (
+          <div className="px-5 pb-3">
+            <button
+              onClick={handleAutoConfirm}
+              disabled={autoConfirming}
+              className="flex w-full items-center justify-between gap-3 rounded-btn border border-accent/30 bg-accent/5 px-3.5 py-3 text-left disabled:opacity-60"
+            >
+              <span className="text-[13px] leading-snug text-ink">
+                <span className="font-bold text-accent">{autoConfirmable}</span> son de comercios
+                que ya categorizaste antes
+              </span>
+              <span className="shrink-0 text-[12px] font-bold text-accent">
+                {autoConfirming ? "Confirmando…" : "Confirmar"}
+              </span>
+            </button>
+          </div>
+        )}
 
         {filter === "pendientes" && filtered.length > 0 && (
           <div className="flex justify-end px-5 pb-3">

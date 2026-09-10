@@ -1,6 +1,7 @@
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { getGmailStatus, getUserById, hasPassword, requireUserId } from "@/lib/users";
 import { getCredentialsForUser } from "@/lib/webauthn";
+import { isAutoConfirmEnabled } from "@/lib/auto-confirm";
 import { ProfileClient } from "./profile-client";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export default async function ProfilePage() {
         avatarUrl={null}
         gmail={{ linked: false, email: null, syncEnabled: false, enabledBanks: null }}
         hasPasskey={false}
+        autoConfirmEnabled
         pushConfigured={false}
         passwordSet={false}
         demoMode
@@ -28,11 +30,12 @@ export default async function ProfilePage() {
   }
 
   const userId = await requireUserId();
-  const [user, gmail, credentials, passwordSet] = await Promise.all([
+  const [user, gmail, credentials, passwordSet, autoConfirmEnabled] = await Promise.all([
     getUserById(userId),
     getGmailStatus(userId),
     getCredentialsForUser(userId),
     hasPassword(userId),
+    isAutoConfirmEnabled(userId),
   ]);
 
   return (
@@ -47,6 +50,7 @@ export default async function ProfilePage() {
         enabledBanks: gmail.enabledBanks,
       }}
       hasPasskey={credentials.length > 0}
+      autoConfirmEnabled={autoConfirmEnabled}
       pushConfigured={pushConfigured}
       passwordSet={passwordSet}
     />

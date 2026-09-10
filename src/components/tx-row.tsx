@@ -55,6 +55,16 @@ export function TxRow({ tx, divider, selectable, selected, onToggleSelect }: TxR
               PENDIENTE
             </span>
           )}
+          {/* Responde en la lista la pregunta que crea la auto-confirmación:
+              "¿y esta por qué ya está categorizada si yo no la toqué?". */}
+          {tx.confirmed && tx.auto_confirmed && (
+            <span
+              title="Categorizada automáticamente"
+              className="shrink-0 rounded-[4px] bg-accent/10 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-accent"
+            >
+              AUTO
+            </span>
+          )}
         </div>
         <div className="mt-0.5 text-[11px] text-ink-muted">
           {category} · {formatTime(new Date(tx.date))}

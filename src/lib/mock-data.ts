@@ -59,6 +59,7 @@ const tx = (
   category: null,
   ai_suggested_category: null,
   confirmed: true,
+  auto_confirmed: false,
   notes: null,
   source: null,
   created_at: overrides.date,

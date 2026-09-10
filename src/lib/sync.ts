@@ -8,12 +8,18 @@ import {
   sendersForBanks,
 } from "./bank-parser";
 import { describeEmailStructure, labelsPresent } from "./email-structure";
+import { matchesRule } from "./merchant-history";
+import { loadMerchantRules, visibleCategoryNames } from "./auto-confirm";
+import { budgetAlertBody, detectBudgetCrossing } from "./budget-alert";
+import { formatMoney } from "./format";
+import { getHomeCurrencyForUser } from "./users";
 import { htmlToText } from "./qik-parser";
 import { suggestCategory } from "./gemini";
 import { getSupabaseAdmin } from "./supabase";
 import { decryptToken } from "./crypto";
 import { getUsdToDopRate } from "./exchange-rate";
 import { sendPushToUser } from "./push";
+import type { Currency } from "./types";
 
 export interface SyncResult {
   synced: number;
@@ -27,6 +33,96 @@ interface GmailAccountRow {
   sync_enabled: boolean;
   /** Ids de bank-parser.ts elegidos por el usuario; null = todos. */
   enabled_banks: string[] | null;
+}
+
+/**
+ * Avisa si alguna transacción AUTO-CONFIRMADA cruzó el umbral del presupuesto
+ * de su categoría.
+ *
+ * Sin esto, la auto-confirmación se comería en silencio una alerta que hoy sí
+ * existe: el aviso de "80% del presupuesto" se dispara al CONFIRMAR (las
+ * pendientes no cuentan al presupuesto), así que si Peso confirma solo y nadie
+ * lo comprueba aquí, el usuario deja de enterarse justo con las transacciones
+ * más frecuentes — que son las que más rápido consumen un presupuesto.
+ *
+ * No reusa `maybeNotifyBudgetThreshold` de actions.ts porque aquella corre con
+ * la sesión abierta (`requireUserId()`) y el sync viene de un webhook. Lo que
+ * SÍ comparten es la regla del umbral (`budget-alert.ts`), que es lo que no
+ * puede divergir.
+ *
+ * `added` viene ya en moneda de casa. Fallo suave en todo: un aviso jamás
+ * tumba un sync.
+ */
+async function notifyBudgetForAutoConfirmed(
+  userId: string,
+  home: Currency,
+  addedByCategory: Map<string, number>,
+): Promise<void> {
+  if (addedByCategory.size === 0) return;
+
+  try {
+    const supabase = getSupabaseAdmin();
+
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).toISOString();
+
+    const [{ data: budgets }, { data: categories }, { data: spentRows }] = await Promise.all([
+      supabase
+        .from("budgets")
+        .select("category_id, limit_amount")
+        .eq("user_id", userId)
+        .eq("month", monthKey),
+      supabase.from("categories").select("id, name").or(`user_id.is.null,user_id.eq.${userId}`),
+      supabase
+        .from("transactions")
+        .select("category, amount, currency, exchange_rate")
+        .eq("user_id", userId)
+        .eq("type", "expense")
+        .eq("confirmed", true)
+        .is("deleted_at", null)
+        .gte("date", from)
+        .lte("date", to),
+    ]);
+    if (!budgets?.length) return;
+
+    const nameById = new Map((categories ?? []).map((c) => [c.id as string, c.name as string]));
+    const spentByCategory = new Map<string, number>();
+    for (const row of spentRows ?? []) {
+      const name = row.category as string | null;
+      if (!name) continue;
+      const amount =
+        row.currency === home ? Number(row.amount) : Number(row.amount) * (row.exchange_rate ?? 1);
+      spentByCategory.set(name, (spentByCategory.get(name) ?? 0) + amount);
+    }
+
+    for (const budget of budgets) {
+      const name = nameById.get(budget.category_id as string);
+      if (!name) continue;
+      const added = addedByCategory.get(name);
+      if (!added) continue;
+
+      const limit = Number(budget.limit_amount);
+      const spent = spentByCategory.get(name) ?? 0;
+      const crossing = detectBudgetCrossing(limit, spent, added);
+      if (!crossing) continue;
+
+      await sendPushToUser(userId, {
+        title: "⚠️ Presupuesto",
+        body: budgetAlertBody(
+          crossing,
+          name,
+          formatMoney(spent, home),
+          formatMoney(limit, home),
+          Math.round((spent / limit) * 100),
+        ),
+        url: "/budget",
+      });
+    }
+  } catch (err) {
+    console.error("[notifyBudgetForAutoConfirmed]", err);
+  }
 }
 
 /**
@@ -99,19 +195,18 @@ export async function runSyncForUser(
   const newEmails = emails.filter((e) => !known.has(e.id));
   if (newEmails.length === 0) return { synced: 0, errors };
 
-  // Globales (seed) + las propias del usuario, para que Gemini pueda sugerir
-  // también las categorías personalizadas al clasificar sus correos. Las que
-  // el usuario ocultó (migración 0011) se excluyen: no tiene sentido
-  // sugerirle una categoría que quitó de su lista.
-  const [{ data: categories, error: catError }, { data: hidden, error: hiddenError }] =
-    await Promise.all([
-      supabase.from("categories").select("id, name").or(`user_id.is.null,user_id.eq.${userId}`),
-      supabase.from("hidden_categories").select("category_id").eq("user_id", userId),
-    ]);
-  if (catError) throw new Error(`Error cargando categorías: ${catError.message}`);
-  if (hiddenError) throw new Error(`Error cargando categorías ocultas: ${hiddenError.message}`);
-  const hiddenIds = new Set((hidden ?? []).map((h) => h.category_id));
-  const categoryNames = (categories ?? []).filter((c) => !hiddenIds.has(c.id)).map((c) => c.name);
+  // Globales (seed) + las propias del usuario, menos las que ocultó, para que
+  // Gemini pueda sugerir también las personalizadas sin resucitar una que el
+  // usuario quitó de su lista.
+  //
+  // Las reglas de auto-confirmación (comercios que este usuario ya categorizó
+  // varias veces) se arman UNA vez por corrida y no por correo: con 50 correos
+  // nuevos, consultarlas dentro del bucle serían 50 consultas para construir
+  // siempre lo mismo.
+  const [categoryNames, autoConfirmRules] = await Promise.all([
+    visibleCategoryNames(userId),
+    loadMerchantRules(userId),
+  ]);
 
   // Tasa USD→DOP del día, pedida una sola vez por corrida y solo si algún
   // correo viene en moneda extranjera. Fallo suave: sin tasa la transacción
@@ -122,7 +217,20 @@ export async function runSyncForUser(
     return rateMemo;
   };
 
+  // Igual que la tasa: solo hace falta si algo se auto-confirma como gasto (el
+  // aviso de presupuesto se compara en moneda de casa). Un sync que no
+  // auto-confirma nada no paga esta consulta.
+  let homeMemo: Currency | undefined;
+  const getHome = async () => {
+    if (homeMemo === undefined) homeMemo = await getHomeCurrencyForUser(userId);
+    return homeMemo;
+  };
+
   let synced = 0;
+  let autoConfirmed = 0;
+  /** Gasto auto-confirmado por categoría, en moneda de casa, para el aviso
+   *  de presupuesto de después del bucle. */
+  const autoExpenseByCategory = new Map<string, number>();
   // Asuntos cuyo esqueleto ya se adjuntó en esta corrida (ver más abajo).
   const described = new Set<string>();
   for (const email of newEmails) {
@@ -173,13 +281,23 @@ export async function runSyncForUser(
     if (dupError) throw new Error(`Error consultando duplicados: ${dupError.message}`);
     if (duplicate) continue;
 
-    const suggestion = await suggestCategory({
-      merchant: parsed.merchant,
-      amount: parsed.amount,
-      currency: parsed.currency,
-      type: parsed.type,
-      availableCategories: categoryNames,
-    });
+    // ¿Comercio que el usuario ya categorizó varias veces? Entonces no hay
+    // nada que preguntarle — ni a él ni a Gemini: su propio historial es más
+    // confiable que una sugerencia de la IA, y encima sale gratis.
+    const auto = matchesRule(parsed, autoConfirmRules);
+    // La categoría solo vale si sigue existiendo y visible para el usuario:
+    // pudo haberla borrado u ocultado desde que la usó.
+    const autoCategory = auto && categoryNames.includes(auto.category) ? auto.category : null;
+
+    const suggestion = autoCategory
+      ? null
+      : await suggestCategory({
+          merchant: parsed.merchant,
+          amount: parsed.amount,
+          currency: parsed.currency,
+          type: parsed.type,
+          availableCategories: categoryNames,
+        });
 
     const { error: insertError } = await supabase.from("transactions").insert({
       user_id: userId,
@@ -192,8 +310,10 @@ export async function runSyncForUser(
       date: parsed.date.toISOString(),
       card_last4: parsed.card_last4,
       available_balance: parsed.available_balance,
+      category: autoCategory,
       ai_suggested_category: suggestion?.category ?? null,
-      confirmed: false,
+      confirmed: autoCategory !== null,
+      auto_confirmed: autoCategory !== null,
       source: "email",
       raw_email_snippet: email.snippet,
     });
@@ -206,18 +326,47 @@ export async function runSyncForUser(
       continue;
     }
     synced++;
+
+    if (autoCategory) {
+      autoConfirmed++;
+      if (parsed.type === "expense") {
+        const inHome =
+          parsed.currency === (await getHome())
+            ? parsed.amount
+            : parsed.amount * ((await getRate()) ?? 1);
+        autoExpenseByCategory.set(
+          autoCategory,
+          (autoExpenseByCategory.get(autoCategory) ?? 0) + inHome,
+        );
+      }
+    }
   }
 
   if (options?.notify && synced > 0) {
+    const pending = synced - autoConfirmed;
+    // El texto dice la verdad de lo que pasó: mandar a alguien a "confirmar"
+    // una bandeja vacía porque todo se confirmó solo es peor que no avisar.
+    const body =
+      pending === 0
+        ? synced === 1
+          ? "1 transacción nueva, confirmada automáticamente"
+          : `${synced} transacciones nuevas, confirmadas automáticamente`
+        : autoConfirmed > 0
+          ? `${synced} nuevas · ${pending} por confirmar`
+          : pending === 1
+            ? "1 transacción nueva por confirmar"
+            : `${pending} transacciones nuevas por confirmar`;
+
     // Fallo suave: la notificación es un extra, nunca tumba el sync.
     await sendPushToUser(userId, {
       title: "Peso",
-      body:
-        synced === 1
-          ? "1 transacción nueva por confirmar"
-          : `${synced} transacciones nuevas por confirmar`,
-      url: "/transactions?filter=pendientes",
+      body,
+      url: pending > 0 ? "/transactions?filter=pendientes" : "/transactions",
     }).catch((err) => console.error("[sync] push falló:", err));
+  }
+
+  if (autoExpenseByCategory.size > 0) {
+    await notifyBudgetForAutoConfirmed(userId, await getHome(), autoExpenseByCategory);
   }
 
   return { synced, errors };

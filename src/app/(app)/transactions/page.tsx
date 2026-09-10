@@ -1,4 +1,5 @@
 import {
+  getAutoConfirmStatus,
   getCards,
   getCategories,
   getPendingCount,
@@ -35,11 +36,14 @@ export default async function TransactionsPage({
   const activeFilter = parseFilterParam(filter);
   const showingPending = activeFilter === "pendientes";
 
-  const [transactions, pendingCount, categories, cards] = await Promise.all([
+  const [transactions, pendingCount, autoConfirm, categories, cards] = await Promise.all([
     showingPending ? getPendingTransactions() : getTransactions({ month }),
     // El badge de la pestaña es global, así que no sale de las filas
     // cargadas: es un count(*) barato que no trae ninguna fila.
     getPendingCount(),
+    // Solo en la vista donde el botón puede aparecer: recorrer las reglas del
+    // historial no tiene por qué pagarse al mirar los gastos de marzo.
+    showingPending ? getAutoConfirmStatus() : Promise.resolve({ enabled: true, pending: 0 }),
     getCategories(),
     getCards(),
   ]);
@@ -54,6 +58,7 @@ export default async function TransactionsPage({
       filter={activeFilter}
       initialCard={card}
       pendingCount={pendingCount}
+      autoConfirmable={autoConfirm.pending}
       categories={categories.map((c) => c.name)}
       cards={cards.map((c) => ({ last4: c.last4, nickname: c.nickname }))}
     />

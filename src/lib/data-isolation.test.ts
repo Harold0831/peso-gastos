@@ -116,6 +116,15 @@ async function registrarLecturas() {
     getCardsForMonth: () => d.getCardsForMonth(MES),
     getUnregisteredCards: () => d.getUnregisteredCards(),
     getAttentionItems: () => d.getAttentionItems(),
+    // Sin historial sembrado no habría reglas y la función se pararía antes
+    // de consultar las pendientes — la consulta que más importa aislar aquí.
+    getAutoConfirmStatus: () => {
+      fake.seed("transactions", [
+        { id: "tx-1", merchant: "Netflix", category: "Entretenimiento", amount: 649 },
+        { id: "tx-2", merchant: "Netflix", category: "Entretenimiento", amount: 649 },
+      ]);
+      return d.getAutoConfirmStatus();
+    },
   });
 }
 

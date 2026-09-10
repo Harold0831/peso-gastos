@@ -10,6 +10,7 @@ import {
   logoutAction,
   savePushSubscription,
   sendFeedback,
+  setAutoConfirmEnabled,
   setEnabledBanks,
   setPassword,
 } from "@/lib/actions";
@@ -33,6 +34,9 @@ interface ProfileClientProps {
     enabledBanks: string[] | null;
   };
   hasPasskey: boolean;
+  /** true si Peso puede confirmar sola las transacciones de comercios que el
+   *  usuario ya categorizó (migración 0015). */
+  autoConfirmEnabled: boolean;
   /** true si las claves VAPID están configuradas en el servidor. */
   pushConfigured: boolean;
   /** true si la cuenta ya tiene contraseña (entró por correo o la fijó aquí). */
@@ -53,6 +57,7 @@ export function ProfileClient({
   avatarUrl,
   gmail,
   hasPasskey,
+  autoConfirmEnabled,
   pushConfigured,
   passwordSet,
   demoMode,
@@ -163,6 +168,23 @@ export function ProfileClient({
   );
   const [banksError, setBanksError] = useState<string | null>(null);
   const [savingBanks, startSavingBanks] = useTransition();
+
+  const [autoConfirm, setAutoConfirm] = useState(autoConfirmEnabled);
+  const [autoConfirmError, setAutoConfirmError] = useState<string | null>(null);
+  const [savingAutoConfirm, startSavingAutoConfirm] = useTransition();
+
+  const toggleAutoConfirm = () => {
+    setAutoConfirmError(null);
+    const next = !autoConfirm;
+    setAutoConfirm(next); // optimista: revierte si la action falla
+    startSavingAutoConfirm(async () => {
+      const result = await setAutoConfirmEnabled(next);
+      if (!result.ok) {
+        setAutoConfirm(!next);
+        setAutoConfirmError(result.error ?? "No se pudo guardar");
+      }
+    });
+  };
 
   const toggleBank = (id: string) => {
     setBanksError(null);
@@ -352,6 +374,44 @@ export function ProfileClient({
             })}
           </div>
           {banksError && <p className="mt-2 text-xs font-medium text-expense">{banksError}</p>}
+        </section>
+      )}
+
+      {/* Auto-confirmación. Apagable a propósito: es automatización silenciosa
+          sobre datos financieros, y quien prefiera revisar todo a mano debe
+          poder quitarla sin pedirle permiso a nadie. */}
+      {gmail.linked && gmail.syncEnabled && (
+        <section className={sectionClass}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className={labelClass}>Confirmar automáticamente</h2>
+              <p className="mt-2 text-[12px] leading-relaxed text-ink-muted">
+                Si ya clasificaste un comercio varias veces, Peso confirma sola la próxima con esa
+                misma categoría. Las marca con “AUTO” y siempre puedes cambiarlas. Un monto muy por
+                encima de lo habitual en ese comercio se queda por confirmar.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoConfirm}
+              aria-label="Confirmar automáticamente"
+              onClick={toggleAutoConfirm}
+              disabled={savingAutoConfirm || demoMode}
+              className={`mt-1 flex h-[30px] w-[50px] shrink-0 items-center rounded-pill p-0.5 transition disabled:opacity-50 ${
+                autoConfirm ? "bg-accent-solid" : "bg-line"
+              }`}
+            >
+              <span
+                className={`h-[26px] w-[26px] rounded-pill bg-surface shadow-sm transition-transform ${
+                  autoConfirm ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+          {autoConfirmError && (
+            <p className="mt-2 text-xs font-medium text-expense">{autoConfirmError}</p>
+          )}
         </section>
       )}
 

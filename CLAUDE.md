@@ -79,6 +79,9 @@ src/
 │   ├── password.ts         # Hash de contraseñas con scrypt (login por correo)
 │   ├── schemas.ts          # Schemas Zod compartidos
 │   ├── sync.ts             # runSyncForUser / runSyncForGmailAddress / runSyncAll
+│   ├── merchant-history.ts # Reglas puras de auto-confirmación por comercio
+│   ├── auto-confirm.ts     # Lado servidor de esas reglas (historial + pendientes)
+│   ├── budget-alert.ts     # Regla del aviso de presupuesto (compartida)
 │   ├── bank-parser.ts      # Registro de bancos: remitentes + dispatcher por From
 │   ├── qik-parser.ts       # Parser Qik (5 tipos; exporta htmlToText compartido)
 │   ├── popular-parser.ts   # Parser Banco Popular (6 tipos, tablas columnares)
@@ -116,6 +119,7 @@ supabase/
 ├── migrations/0012_...sql   # cards (nombre a los card_last4 ya guardados)
 ├── migrations/0013_...sql   # users.password_hash (login con correo)
 ├── migrations/0014_...sql   # rate_limits + check_rate_limit() (freno por IP)
+├── migrations/0015_...sql   # auto_confirmed + users.auto_confirm_enabled
 └── seed.sql                 # Categorías por defecto (globales, user_id null)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
@@ -381,6 +385,59 @@ design/                      # Referencias visuales (no es código de la app)
   selecciona todas y precarga esa categoría de un tap — pensado para el
   caso de varias transacciones similares seguidas (p. ej. varios
   "PedidosYa" sugeridos como "Alimentación").
+- **Auto-confirmación por comercio conocido** (migración `0015`,
+  `merchant-history.ts` + `auto-confirm.ts`): TODA transacción importada por
+  correo llegaba como "por confirmar", aunque fuera la quinta vez que llega el
+  mismo Netflix. Un usuario real acumuló 244 pendientes — a ese volumen la
+  pantalla deja de ser una bandeja y pasa a ser una deuda que nadie salda.
+  Ahora, si el usuario ya categorizó ese comercio, la próxima se confirma sola.
+  Tres reglas, todas en `merchant-history.ts` (puro, con tests):
+  - **Mínimo 2 veces** (`MIN_OCCURRENCES`): una sola vez es casualidad, no
+    costumbre. Si el historial mezcla categorías gana la más frecuente, y el
+    conteo es el de la categoría GANADORA, no el total del comercio (una vez
+    "Compras" y una vez "Educación" no hacen una regla).
+  - **Coincidencia exacta** del nombre normalizado (`normalizeMerchant`:
+    mayúsculas y espacios de sobra). Nada de prefijos: "PedidosYa\*Pizza Hut" y
+    "PedidosYa\*Wendys" son comercios distintos y pueden ir a categorías
+    distintas.
+  - **Tope de monto** (`MAX_AMOUNT_FACTOR` = 2× el máximo histórico DE ESE
+    comercio): la red de seguridad. Confirmar es también la oportunidad de ver
+    un cargo que no reconoces, así que un Netflix de RD$6,490 se detiene y
+    pregunta. El tope sale del propio historial, así que un supermercado que va
+    de RD$200 a RD$5,000 tolera más sin configurar nada.
+    Detalles que importan: la categoría solo vale si **sigue visible** para el
+    usuario (pudo borrarla u ocultarla — si no, se resucitaría por la puerta de
+    atrás); una auto-confirmada **no gasta llamada a Gemini** (el historial del
+    propio usuario es mejor señal que la IA, y encima es gratis); y el sync
+    comprueba el umbral de presupuesto de lo que confirmó solo
+    (`notifyBudgetForAutoConfirmed`) porque ese aviso se dispara al CONFIRMAR —
+    sin esto, automatizar se habría comido en silencio la alerta justo en las
+    transacciones más frecuentes, que son las que más rápido agotan un
+    presupuesto. La regla del umbral vive en `budget-alert.ts` para que los dos
+    caminos (con sesión y sin ella) no puedan divergir.
+    **`transactions.auto_confirmed` marca lo que decidió Peso** y no se deduce de
+    `confirmed`: la lista lo enseña con un chip "AUTO", el detalle con un banner,
+    y en cuanto la persona toca la transacción el sello se borra (la decisión ya
+    es suya). El texto de la push también cambió — mandar a alguien a "confirmar"
+    una bandeja que se confirmó sola es peor que no avisar.
+    **`autoConfirmPending()` es la mitad que hace útil la otra**: las reglas solo
+    actúan sobre lo que llega de aquí en adelante, así que sin un botón que las
+    aplique a la cola ya acumulada la función no le resolvía nada a quien la
+    pidió. Vive en /transactions → "Por confirmar" ("N son de comercios que ya
+    categorizaste"), y **qué confirmar lo decide el servidor**: una server action
+    es un endpoint público, y aceptar del navegador "confirma estas con esta
+    categoría" sería aceptar una orden, no un dato. El número del botón sale de
+    la MISMA función que ejecuta la acción (`findAutoConfirmable`) — si dijera 44
+    y confirmara 12, la función perdería la confianza que necesita para que
+    alguien la deje encendida.
+    Apagable desde /profile (`users.auto_confirm_enabled`, default true): es
+    automatización silenciosa sobre datos financieros. Apagarla decide el futuro,
+    no revierte lo ya confirmado.
+    Nota sobre los tests de aislamiento: `findAutoConfirmable` se para en seco si
+    el historial viene vacío, así que registrarla a secas habría dado un test que
+    jamás llega a la consulta de pendientes. Por eso `createFakeSupabase()` ganó
+    un `seed(tabla, filas)`. Verificado quitando a mano el `.eq("user_id", …)` de
+    esa consulta: ambos tests fallan nombrando función y tabla.
 - **Sync automático**: los watches de Gmail de TODOS los usuarios publican
   al mismo tópico de Cloud Pub/Sub. El push a `POST /api/gmail-webhook`
   trae en su payload el `emailAddress` del buzón que cambió →

@@ -251,6 +251,21 @@ export function ConfirmForm({
         </section>
       )}
 
+      {/* Peso confirmó esta sola: decirlo aquí, donde la categoría se puede
+          cambiar de un toque. Automatizar sin avisar es lo que convierte una
+          ayuda en una sorpresa desagradable. */}
+      {tx.auto_confirmed && (
+        <div className="mx-5 mt-5 rounded-card border border-accent/25 bg-accent/10 px-4 py-3">
+          <p className="text-[13px] font-semibold tracking-tight text-accent">
+            Categorizada automáticamente
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
+            Ya habías clasificado {tx.merchant} antes, así que Peso la confirmó sola. Cámbiale la
+            categoría abajo si no es correcta.
+          </p>
+        </div>
+      )}
+
       {/* Categoría */}
       <div className="flex items-center gap-1.5 px-5 pb-2.5 pt-6">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-ink">Categoría</h2>

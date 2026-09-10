@@ -64,12 +64,26 @@ export interface FakeSupabase {
   queries: RecordedQuery[];
   /** Las que tocaron una tabla concreta. */
   on(table: string): RecordedQuery[];
+  /**
+   * Hace que las lecturas de una tabla devuelvan estas filas en vez de un
+   * array vacío.
+   *
+   * Hace falta para las funciones que DECIDEN si seguir consultando según lo
+   * que encontraron: `findAutoConfirmable` se para en seco si el historial
+   * viene vacío, así que sin sembrarlo su consulta de pendientes nunca se
+   * lanzaría y el test la daría por aislada sin haberla visto jamás — el tipo
+   * de test decorativo que estos archivos existen para evitar.
+   *
+   * `reset()` la limpia, así que cada función registrada siembra lo suyo.
+   */
+  seed(table: string, rows: Record<string, unknown>[]): void;
   reset(): void;
   client: unknown;
 }
 
 export function createFakeSupabase(): FakeSupabase {
   const queries: RecordedQuery[] = [];
+  const seeded = new Map<string, Record<string, unknown>[]>();
 
   function chainFor(query: RecordedQuery): unknown {
     const chain: Record<string | symbol, unknown> = {};
@@ -79,9 +93,10 @@ export function createFakeSupabase(): FakeSupabase {
         if (prop === "then") {
           return (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) => {
             const returnsOne = query.calls.some((c) => SINGLE.has(c.method));
+            const rows = seeded.get(query.table);
             const result = returnsOne
-              ? { data: { ...SINGLE_ROW }, error: null }
-              : { data: [], error: null, count: 0 };
+              ? { data: rows ? (rows[0] ?? null) : { ...SINGLE_ROW }, error: null }
+              : { data: rows ?? [], error: null, count: rows?.length ?? 0 };
             return Promise.resolve(result).then(resolve, reject);
           };
         }
@@ -122,7 +137,11 @@ export function createFakeSupabase(): FakeSupabase {
   return {
     queries,
     on: (table) => queries.filter((q) => q.table === table),
-    reset: () => queries.splice(0, queries.length),
+    seed: (table, rows) => void seeded.set(table, rows),
+    reset: () => {
+      queries.splice(0, queries.length);
+      seeded.clear();
+    },
     client,
   };
 }
