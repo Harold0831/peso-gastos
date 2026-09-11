@@ -2,6 +2,7 @@ import "server-only";
 import { GmailAuthError, fetchBankEmails } from "./gmail";
 import { reportIssue } from "./monitoring";
 import {
+  bankIdForSender,
   bankNameForSender,
   isIgnorableBankEmail,
   parseBankEmail,
@@ -290,7 +291,10 @@ export async function runSyncForUser(
         const primeraVez = await saveFailedEmail({
           userId,
           gmailMessageId: email.id,
-          bank,
+          // El ID (`popular`), no el nombre: esta columna se FILTRA desde el
+          // endpoint admin. Guardar "Banco Popular" hacía que `?bank=popular`
+          // no devolviera nada aunque la tabla tuviera filas.
+          bank: bankIdForSender(email.from),
           subject: email.subject,
           from: email.from,
           receivedAt: email.receivedAt,

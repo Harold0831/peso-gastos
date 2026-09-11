@@ -540,6 +540,18 @@ sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
     `ADMIN_SECRET`, limitado por IP), que devuelve el cuerpo descifrado y **no**
     el user_id: para arreglar un parser hace falta el formato, no saber de quién
     es el correo.
+    **`bank` guarda el ID (`popular`), no el nombre (`Banco Popular`)** — bug
+    real: se guardaba el nombre mientras el endpoint filtraba por `?bank=popular`,
+    así que la tabla se llenaba de muestras y el curl devolvía `{"count":0}`. Un
+    fallo MUDO —sin error en el log ni en la respuesta— justo en la herramienta
+    que existe para diagnosticar fallos mudos. El filtro además usa `ilike` para
+    aceptar id o nombre, y así las filas guardadas antes del arreglo siguen
+    apareciendo sin migración. `bank-identity.test.ts` vigila las dos mitades:
+    que `bankIdForSender` devuelva un id del catálogo y no un nombre, y que el
+    nombre de cada banco contenga su id (que es lo único que hace funcionar la
+    tolerancia del `ilike`; un banco nuevo id `brd` / nombre "Banco de Reservas"
+    la rompería en silencio). Verificado devolviendo el nombre a mano: fallan
+    dos tests.
   - **Gemini lee el correo mientras tanto** (`parseEmailWithAi`). Lo que saca
     entra SIEMPRE sin confirmar y **nunca** se auto-confirma —`readByAi` corta
     esa vía de raíz— y se marca con `source='ai'`, que el detalle muestra en un

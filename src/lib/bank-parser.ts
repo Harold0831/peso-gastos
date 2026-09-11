@@ -123,6 +123,23 @@ export function bankNameForSender(from: string): string {
   return bankForSender(from)?.name ?? "remitente desconocido";
 }
 
+/** Id del banco de un remitente, o "desconocido" si no está en el registro. */
+export const UNKNOWN_BANK_ID = "desconocido";
+
+/**
+ * Id del banco de un remitente — la clave ESTABLE (`popular`), no el nombre
+ * para humanos (`Banco Popular`).
+ *
+ * Existe porque guardar el nombre en una columna que luego se filtra fue un
+ * bug real: `failed_emails.bank` guardaba "Banco Popular" y el endpoint admin
+ * filtraba por `?bank=popular`, así que nunca devolvía nada aunque la tabla
+ * tuviera filas. El nombre es para leer (avisos de Discord); el id es para
+ * guardar y consultar, igual que en `enabled_banks`.
+ */
+export function bankIdForSender(from: string): string {
+  return bankForSender(from)?.id ?? UNKNOWN_BANK_ID;
+}
+
 /** true si el correo es ruido esperado del banco (no reportar como error). */
 export function isIgnorableBankEmail(from: string, subject: string, body: string): boolean {
   const bank = bankForSender(from);

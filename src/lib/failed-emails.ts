@@ -112,7 +112,11 @@ export async function listFailedEmails(options?: {
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false })
     .limit(options?.limit ?? 20);
-  if (options?.bank) query = query.eq("bank", options.bank);
+  // Tolerante a propósito: `bank` guarda el ID (`popular`), pero las filas
+  // anteriores al arreglo guardaron el NOMBRE ("Banco Popular") — y quien
+  // teclea el curl puede poner cualquiera de los dos. `ilike` cubre ambos sin
+  // migración: el nombre siempre contiene el id salvo mayúsculas/acentos.
+  if (options?.bank) query = query.ilike("bank", `%${options.bank}%`);
 
   const { data, error } = await query;
   if (error) throw new Error(`Error leyendo muestras: ${error.message}`);
