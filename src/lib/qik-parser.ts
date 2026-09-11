@@ -90,6 +90,41 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
+/**
+ * Etiquetas HTML reales. Después del nombre exige un `>` o un espacio (o sea,
+ * atributos): eso es lo que distingue una etiqueta de un texto que empieza con
+ * `<` y una letra.
+ */
+const HTML_TAG_RE =
+  /<\/?(?:html|head|body|meta|link|style|script|table|tbody|thead|tfoot|tr|td|th|div|p|span|br|hr|img|a|b|i|u|strong|em|font|center|ul|ol|li|h[1-6])(?:\s[^>]*)?\/?>/i;
+
+/**
+ * ¿El cuerpo del correo es HTML?
+ *
+ * **Bug real, 2026-09-11**: la prueba era `/<[a-z][\s\S]*>/`, y los correos en
+ * TEXTO PLANO traen sus enlaces entre ángulos —
+ * `<https://www.popularenlinea.com/…>` — que empieza por `h` minúscula y
+ * cumplía esa expresión. Resultado: un correo de texto plano se trataba como
+ * HTML y pasaba por `htmlToText`, que colapsa `[ \t]+` en UN espacio y por
+ * tanto **se come los TABULADORES**. En el Popular los tabuladores son lo que
+ * separa las columnas de la tabla, así que la tabla desaparecía y consumos y
+ * retiros se perdían enteros — con el agravante de que el esqueleto del
+ * monitoreo salía del mismo texto ya destrozado y decía "Etiquetas
+ * encontradas: ninguna", mandando a buscar un cambio de formato que no existía.
+ *
+ * Poner `<` y una letra es la forma NORMAL de escribir un enlace en un correo
+ * de texto plano, así que esto no era un caso raro: afectaba a todo banco que
+ * mande su versión de texto con enlaces.
+ */
+export function looksLikeHtml(raw: string): boolean {
+  return HTML_TAG_RE.test(raw);
+}
+
+/** Cuerpo del correo como texto, venga en HTML o ya en texto plano. */
+export function toPlainText(raw: string): string {
+  return looksLikeHtml(raw) ? htmlToText(raw) : raw;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -193,7 +228,7 @@ export function isIgnorableQikEmail(subject: string, rawBody?: string): boolean 
     return true;
   }
   if (rawBody) {
-    const body = /<[a-z][\s\S]*>/i.test(rawBody) ? htmlToText(rawBody) : rawBody;
+    const body = toPlainText(rawBody);
     const status = extractField(body, "Estatus");
     if (status && !/^(aprobada|exitoso)$/i.test(status.trim())) return true;
   }
@@ -330,7 +365,7 @@ function buildCardReversal(body: string): ParsedQikEmail | null {
  * no llenar el log de ruido con estados de cuenta y códigos vencidos.
  */
 export function parseQikEmail(subject: string, rawBody: string): ParsedQikEmail | null {
-  const body = /<[a-z][\s\S]*>/i.test(rawBody) ? htmlToText(rawBody) : rawBody;
+  const body = toPlainText(rawBody);
 
   if (/pago de servicio realizado/i.test(subject)) {
     return buildServicePayment(body);

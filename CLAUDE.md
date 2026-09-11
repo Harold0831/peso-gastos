@@ -718,6 +718,31 @@ nada (el ciclo completo: `curl` → reproducir en un test → arreglar):
 - **Qik: "Tu tarjeta ha sido bloqueada"** (por CVV/PIN incorrecto) es una alerta
   de seguridad, no un movimiento — el consumo que la provocó ni se cobró.
 
+**Y debajo de todo eso había un bug que no era del Popular** (2026-09-11, el
+que de verdad explicaba la mayoría): la prueba de "¿esto es HTML?" era
+`/<[a-z][\s\S]*>/`, y un correo de TEXTO PLANO escribe sus enlaces entre
+ángulos — `<https://www.popularenlinea.com/…>`, que empieza por `h` minúscula y
+cumplía esa expresión. El correo se trataba como HTML y pasaba por
+`htmlToText`, que colapsa `[ \t]+` en un espacio y por tanto **se come los
+TABULADORES**: la tabla columnar desaparecía y el correo entero se perdía.
+
+- **El síntoma engañaba a propósito**: el esqueleto del monitoreo se calcula
+  sobre ESE MISMO texto ya destrozado, así que decía "Etiquetas encontradas:
+  ninguna" y mandaba a buscar un cambio de formato del banco que nunca existió.
+  La muestra guardada en `failed_emails` sí traía el cuerpo CRUDO — por eso se
+  pudo ver que la tabla estaba intacta y el problema era nuestro.
+- **No era un caso raro ni exclusivo del Popular**: `<enlace>` es la forma
+  normal de escribir un enlace en la parte de texto plano de un correo, y la
+  heurística estaba COPIADA en diez sitios (los seis parsers, dos veces en
+  `sync.ts`). Ahora hay una sola `toPlainText()` en `qik-parser.ts` y
+  `looksLikeHtml()` exige una etiqueta de verdad: nombre conocido y después un
+  `>` o un espacio (atributos). `qik-parser.test.ts` lo cubre por los dos
+  lados — que un `<https://…>` o un `<mailto:…>` NO cuente como HTML y que los
+  tabuladores sobrevivan, y que el HTML de verdad sí se convierta.
+- La lección general: cuando el diagnóstico dice "el banco cambió el formato",
+  **comprueba primero el cuerpo crudo contra el parser en un test**. Aquí el
+  banco no había cambiado nada.
+
 ### Qik
 
 Qik notifica transacciones desde **dos remitentes distintos**:

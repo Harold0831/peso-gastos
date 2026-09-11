@@ -15,7 +15,7 @@ import { loadMerchantRules, visibleCategoryNames } from "./auto-confirm";
 import { budgetAlertBody, detectBudgetCrossing } from "./budget-alert";
 import { formatMoney } from "./format";
 import { getHomeCurrencyForUser } from "./users";
-import { htmlToText } from "./qik-parser";
+import { toPlainText } from "./qik-parser";
 import { parseEmailWithAi, suggestCategory } from "./gemini";
 import { getSupabaseAdmin } from "./supabase";
 import { decryptToken } from "./crypto";
@@ -315,7 +315,7 @@ export async function runSyncForUser(
           errors.push(encabezado);
         } else {
           described.add(clave);
-          const text = /<[a-z][\s\S]*>/i.test(email.body) ? htmlToText(email.body) : email.body;
+          const text = toPlainText(email.body);
           errors.push(
             [
               encabezado,
@@ -377,7 +377,7 @@ export async function runSyncForUser(
               await parseEmailWithAi({
                 bank,
                 subject: email.subject,
-                body: /<[a-z][\s\S]*>/i.test(email.body) ? htmlToText(email.body) : email.body,
+                body: toPlainText(email.body),
                 receivedAt: email.receivedAt,
               }))
             : null;

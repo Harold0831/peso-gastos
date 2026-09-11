@@ -1,5 +1,5 @@
 import type { ParsedBankEmail } from "./types";
-import { htmlToText } from "./qik-parser";
+import { toPlainText } from "./qik-parser";
 import { zipColumns } from "./popular-parser";
 
 /**
@@ -110,7 +110,7 @@ export function isIgnorableBhdEmail(subject: string): boolean {
 }
 
 export function parseBhdEmail(subject: string, rawBody: string): ParsedBankEmail | null {
-  const body = /<[a-z][\s\S]*>/i.test(rawBody) ? htmlToText(rawBody) : rawBody;
+  const body = toPlainText(rawBody);
   const s = subject.toLowerCase();
 
   if (

@@ -1,5 +1,5 @@
 import type { ParsedBankEmail } from "./types";
-import { htmlToText } from "./qik-parser";
+import { toPlainText } from "./qik-parser";
 
 /**
  * Parser de correos de Banco Caribe.
@@ -49,7 +49,7 @@ export function parseCaribeDateTime(dateRaw: string, timeRaw: string | null): Da
 }
 
 export function parseCaribeEmail(subject: string, rawBody: string): ParsedBankEmail | null {
-  const body = /<[a-z][\s\S]*>/i.test(rawBody) ? htmlToText(rawBody) : rawBody;
+  const body = toPlainText(rawBody);
 
   // El asunto de Caribe es genérico ("BANCO CARIBE") — se detecta por el cuerpo
   if (!/posee una transacci[oó]n/i.test(body)) return null;

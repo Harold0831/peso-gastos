@@ -1,5 +1,5 @@
 import type { Currency, ParsedBankEmail } from "./types";
-import { htmlToText } from "./qik-parser";
+import { toPlainText } from "./qik-parser";
 
 /**
  * Parser de correos de Scotiabank RD.
@@ -61,7 +61,7 @@ export function parseScotiabankEmail(
   rawBody: string,
   receivedAt: Date,
 ): ParsedBankEmail | null {
-  const body = /<[a-z][\s\S]*>/i.test(rawBody) ? htmlToText(rawBody) : rawBody;
+  const body = toPlainText(rawBody);
   const s = subject.toLowerCase();
 
   const base = {

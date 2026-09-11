@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   htmlToText,
   isIgnorableQikEmail,
+  looksLikeHtml,
   parseAmount,
   parseQikDate,
   parseQikEmail,
+  toPlainText,
 } from "./qik-parser";
 
 // Fixtures tomados de correos reales de no-reply-qik@qik.com.do (con
@@ -400,5 +402,32 @@ describe("parseQikEmail (integración con correos reales)", () => {
 
   it("ignora un correo no reconocido", () => {
     expect(parseQikEmail("Bienvenido a Qik", "<p>Gracias por abrir tu cuenta.</p>")).toBeNull();
+  });
+});
+
+describe("looksLikeHtml / toPlainText", () => {
+  it("un enlace entre ángulos NO es HTML", () => {
+    // Es la forma normal de escribir un enlace en un correo de texto plano, y
+    // tomarlo por HTML costó que se perdieran consumos y retiros del Popular:
+    // htmlToText colapsa los tabuladores, que son lo que separa las columnas.
+    const texto = "Monto \tFecha \t\n<https://www.popularenlinea.com/logo.png>\nRD$5.00 \t1/1/2026";
+    expect(looksLikeHtml(texto)).toBe(false);
+    // Lo que de verdad importa: los tabuladores sobreviven.
+    expect(toPlainText(texto)).toContain("\t");
+  });
+
+  it("mailto: y otros esquemas tampoco", () => {
+    expect(looksLikeHtml("escríbenos a <mailto:ayuda@banco.do>")).toBe(false);
+  });
+
+  it("pero el HTML de verdad sí, con o sin atributos", () => {
+    expect(looksLikeHtml("<table class='myTable'><tr><td>Monto</td></tr></table>")).toBe(true);
+    expect(looksLikeHtml("<p>Hola</p>")).toBe(true);
+    expect(looksLikeHtml("un <br/> suelto")).toBe(true);
+    expect(looksLikeHtml('<div style="color:red">x</div>')).toBe(true);
+  });
+
+  it("y del HTML sí se saca el texto", () => {
+    expect(toPlainText("<p>Monto</p><p>RD$5.00</p>")).toBe("Monto\nRD$5.00");
   });
 });

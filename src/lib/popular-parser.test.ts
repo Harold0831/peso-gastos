@@ -466,3 +466,72 @@ describe("transferencia recibida por canal digital", () => {
     });
   });
 });
+
+/**
+ * El correo de texto plano trae sus enlaces entre ángulos —
+ * `<https://www.popularenlinea.com/…>`— y eso hacía que se tomara por HTML.
+ *
+ * No es un detalle cosmético: al pasar por `htmlToText` el cuerpo perdía los
+ * TABULADORES (`[ \t]+` → un espacio), que es justo lo que separa las columnas
+ * de la tabla. Consumos y retiros se perdían ENTEROS, y el esqueleto del
+ * monitoreo —calculado sobre ese mismo texto ya destrozado— decía "Etiquetas
+ * encontradas: ninguna", mandando a buscar un cambio de formato que no existía.
+ *
+ * Estos fixtures conservan las líneas de enlaces del correo real a propósito:
+ * quitarlas haría pasar el test sin arreglar nada.
+ */
+const CONSUMO_CON_ENLACES = ` \r
+<https://www.popularenlinea.com/SiteCollectionImages/Mailer/MAYO/Popular\r
+-Logo-Banco.png>\r
+<https://www.popularenlinea.com/SiteCollectionImages/Mailer/MAYO/Atulado\r
+siempre.png> \r
+\r
+Estimado (a) NOMBRE APELLIDO \r
+\r
+Gracias por utilizar su Tarjeta Visa Débito Clásica, terminada en 4444. \r
+\r
+A continuación detalle de la transacción:\r
+\r
+\r
+Monto \tMoneda \tFecha \tComercio \tEstatus \t\r
+RD$959.80\t Peso dominicano\t 05/09/2026 \tJUMBO SAN PEDRO\r
+DE MAC \tAprobada\t\r
+\r
+En caso de requerir mayor información, puede comunicarse con nosotros\r
+llamando al 809-544-5555. \r
+`;
+
+const RETIRO_CON_ENLACES = ` \r
+<https://www.popularenlinea.com/SiteCollectionImages/Mailer/MAYO/Popular\r
+-Logo-Banco.png>\r
+\r
+Estimado (a) NOMBRE APELLIDO \r
+\r
+Gracias por utilizar su Tarjeta Debito Digital/QR, terminada en 4444. \r
+\r
+A continuación detalle de la transacción:\r
+\r
+\r
+Monto \tMoneda \tFecha \tCajero Automatico\t Estatus \t\r
+RD$1,500.00 \tPeso dominicano \t17/08/2026 \tBANCO POPULAR\r
+OFICINA U.C \tAprobada\t\r
+`;
+
+describe("un enlace <https://…> no convierte el correo en HTML", () => {
+  it("lee el consumo con las líneas de enlaces delante", () => {
+    expect(parsePopularEmail("Notificación de Consumo", CONSUMO_CON_ENLACES)).toMatchObject({
+      type: "expense",
+      merchant: "JUMBO SAN PEDRO DE MAC",
+      amount: 959.8,
+      card_last4: "4444",
+    });
+  });
+
+  it("y el retiro igual", () => {
+    expect(parsePopularEmail("Notificación de Retiro", RETIRO_CON_ENLACES)).toMatchObject({
+      type: "expense",
+      merchant: "Retiro cajero BANCO POPULAR OFICINA U.C",
+      amount: 1500,
+    });
+  });
+});

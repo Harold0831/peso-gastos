@@ -1,5 +1,5 @@
 import type { Currency, ParsedBankEmail } from "./types";
-import { htmlToText } from "./qik-parser";
+import { toPlainText } from "./qik-parser";
 
 /**
  * Parser de correos del Banco Popular Dominicano.
@@ -415,12 +415,12 @@ export function isIgnorablePopularEmail(subject: string, rawBody?: string): bool
     return true;
   }
   if (!rawBody) return false;
-  const body = /<[a-z][\s\S]*>/i.test(rawBody) ? htmlToText(rawBody) : rawBody;
+  const body = toPlainText(rawBody);
   return /\bdeclinad[ao]\b|\brechazad[ao]\b/i.test(body);
 }
 
 export function parsePopularEmail(subject: string, rawBody: string): ParsedBankEmail | null {
-  const body = /<[a-z][\s\S]*>/i.test(rawBody) ? htmlToText(rawBody) : rawBody;
+  const body = toPlainText(rawBody);
   const s = subject.toLowerCase();
 
   if (s.includes("notificación de consumo") || s.includes("notificacion de consumo")) {
