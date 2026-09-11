@@ -219,9 +219,14 @@ function extractLast4(value: string | null): string | null {
  */
 export function isIgnorableQikEmail(subject: string, rawBody?: string): boolean {
   if (
-    // "ha sido bloqueada" (por CVV/PIN incorrecto) es una alerta de seguridad,
-    // no un movimiento de dinero: la transacción que la provocó ni se cobró.
-    /c[oó]digo cash (para|se ha)|estado de cuenta|fecha de pago se acerca|recuerda realizar tu pago|contrase[ñn]a de uso [uú]nico|cardholder services alert|ha sido bloqueada/i.test(
+    // Añadidos el 2026-09-11 con correos reales de una cuenta recién abierta:
+    //  - "ha sido bloqueada" (por CVV/PIN incorrecto) es una alerta de
+    //    seguridad; la transacción que la provocó ni se cobró.
+    //  - bienvenida y "Firma de contrato" son del alta de la cuenta.
+    //  - "NNN NNN es tu código de acceso temporal" es otro OTP, con el código
+    //    en el ASUNTO — la redacción no coincidía con "contraseña de uso único"
+    //    y se reportaba como parser roto en cada inicio de sesión.
+    /c[oó]digo cash (para|se ha)|estado de cuenta|fecha de pago se acerca|recuerda realizar tu pago|contrase[ñn]a de uso [uú]nico|c[oó]digo de acceso temporal|cardholder services alert|ha sido bloqueada|bienvenido a la cuenta|firma de contrato/i.test(
       subject,
     )
   ) {

@@ -15,6 +15,32 @@ export class GmailAuthError extends Error {
   }
 }
 
+/**
+ * La cuenta de Google NO tiene buzón de Gmail.
+ *
+ * Pasa de verdad: se puede entrar con Google usando una dirección que no es de
+ * Gmail (`…@live.com.mx`, `…@outlook.com`), y esa cuenta pasa el OAuth y otorga
+ * el scope `gmail.readonly` sin problema — pero al leer el buzón la API
+ * responde 400 `failedPrecondition` "Mail service not enabled".
+ *
+ * Se separa de `GmailAuthError` porque el remedio es DISTINTO: un token
+ * revocado se arregla reconectando, y esto no se arregla con nada — no hay
+ * buzón que leer. Sin distinguirlo, el sync reintentaba en cada corrida para
+ * siempre, gastando una llamada a la API y una línea de error en el monitoreo
+ * de todos los syncs.
+ */
+export class GmailUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GmailUnavailableError";
+  }
+}
+
+/** ¿La respuesta de error dice que la cuenta no tiene buzón de Gmail? */
+function isMailServiceDisabled(status: number, body: string): boolean {
+  return status === 400 && /mail service not enabled|failedPrecondition/i.test(body);
+}
+
 import { BANK_SENDERS } from "./bank-parser";
 
 export interface GmailMessage {
@@ -64,7 +90,11 @@ async function gmailFetch<T>(path: string, accessToken: string): Promise<T> {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) {
-    throw new Error(`Gmail API ${path} falló (${res.status}): ${await res.text()}`);
+    const body = await res.text();
+    if (isMailServiceDisabled(res.status, body)) {
+      throw new GmailUnavailableError("Esta cuenta de Google no tiene Gmail");
+    }
+    throw new Error(`Gmail API ${path} falló (${res.status}): ${body}`);
   }
   return res.json() as Promise<T>;
 }
@@ -79,7 +109,11 @@ async function gmailPost<T>(path: string, accessToken: string, body: unknown): P
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error(`Gmail API ${path} falló (${res.status}): ${await res.text()}`);
+    const text = await res.text();
+    if (isMailServiceDisabled(res.status, text)) {
+      throw new GmailUnavailableError("Esta cuenta de Google no tiene Gmail");
+    }
+    throw new Error(`Gmail API ${path} falló (${res.status}): ${text}`);
   }
   return res.json() as Promise<T>;
 }

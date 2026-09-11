@@ -261,6 +261,18 @@ describe("isIgnorableQikEmail", () => {
     expect(isIgnorableQikEmail("Cardholder Services Alert")).toBe(true);
   });
 
+  it("ignora los correos del alta de la cuenta", () => {
+    // Una cuenta recién abierta genera estos dos y ninguno mueve dinero.
+    expect(isIgnorableQikEmail("¡Bienvenido a la Cuenta Qik!")).toBe(true);
+    expect(isIgnorableQikEmail("Firma de contrato")).toBe(true);
+  });
+
+  it("ignora el OTP con el código en el asunto", () => {
+    // Otra redacción del mismo OTP: no coincidía con "contraseña de uso único"
+    // y se reportaba como parser roto en CADA inicio de sesión.
+    expect(isIgnorableQikEmail("793 754 es tu código de acceso temporal.")).toBe(true);
+  });
+
   it("ignora el bloqueo de la tarjeta por CVV/PIN incorrecto", () => {
     // Visto en producción el 2026-09-11: es una alerta de seguridad y el
     // consumo que la provocó nunca se cobró, pero se reportaba como un parser

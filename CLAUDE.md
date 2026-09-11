@@ -624,6 +624,20 @@ sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
   Google, el refresh falla con `invalid_grant` → `GmailAuthError` →
   `gmail_accounts.sync_enabled=false`. El dashboard y el perfil muestran
   "reconectar Gmail" y los crons dejan de intentar con esa cuenta.
+- **Cuentas de Google SIN Gmail** (`GmailUnavailableError`): se puede entrar
+  con Google usando una dirección que no es de Gmail (`…@live.com.mx`,
+  `…@outlook.com`); esa cuenta pasa el OAuth y otorga `gmail.readonly` sin
+  problema, pero al leer el buzón la API responde 400 `failedPrecondition`
+  "Mail service not enabled". Visto en producción el 2026-09-11. Es un error
+  DISTINTO del token revocado y por eso tiene su propia clase: un token
+  revocado se arregla reconectando y esto no se arregla con nada —no hay buzón
+  que leer—, así que el mensaje NO dice "reconéctalo". Sin separarlos, el sync
+  reintentaba esa cuenta en CADA corrida, para siempre, gastando una llamada a
+  la API y una línea de error en el monitoreo de todos los syncs.
+  **Pendiente**: la cuenta queda con `sync_enabled=false`, así que al usuario
+  le sale el banner genérico de "Reconectar Gmail" — que para él es un
+  callejón sin salida. Distinguirlo en la UI pide una columna
+  `sync_disabled_reason` en `gmail_accounts`.
 
 ## Parsers de correos bancarios
 

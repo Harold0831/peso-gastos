@@ -1,5 +1,5 @@
 import "server-only";
-import { GmailAuthError, fetchBankEmails } from "./gmail";
+import { GmailAuthError, GmailUnavailableError, fetchBankEmails } from "./gmail";
 import { reportIssue } from "./monitoring";
 import {
   bankIdForSender,
@@ -219,6 +219,17 @@ export async function runSyncForUser(
     if (err instanceof GmailAuthError) {
       await supabase.from("gmail_accounts").update({ sync_enabled: false }).eq("user_id", userId);
       return { synced: 0, errors: ["El acceso a Gmail expiró — reconéctalo desde tu perfil"] };
+    }
+    // Cuenta de Google sin buzón de Gmail (se entró con un correo @live,
+    // @outlook…). No tiene arreglo por parte del usuario, así que se apaga el
+    // sync y NO se le dice que reconecte: reconectar volvería a fallar igual.
+    // Sin esto el sync lo reintentaba en cada corrida, para siempre.
+    if (err instanceof GmailUnavailableError) {
+      await supabase.from("gmail_accounts").update({ sync_enabled: false }).eq("user_id", userId);
+      return {
+        synced: 0,
+        errors: ["Esta cuenta de Google no tiene Gmail: no hay correos que importar"],
+      };
     }
     throw err;
   }
