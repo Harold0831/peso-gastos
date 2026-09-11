@@ -40,21 +40,27 @@ interface FailedEmailInput {
 }
 
 /**
- * Guarda (o refresca) la muestra de un correo que no se pudo parsear.
+ * Guarda la muestra de un correo que no se pudo parsear. Devuelve `true` solo
+ * si es la PRIMERA vez que se ve ese correo.
  *
- * `upsert` sobre (user_id, gmail_message_id) porque un correo roto vuelve a
- * fallar en CADA sync mientras el parser no cambie: sin esto, un solo correo
- * acumularía una fila por corrida. Refrescar en vez de ignorar mantiene viva
- * la muestra de un problema que sigue ocurriendo.
+ * Ese booleano no es cosmético: un correo que ningún parser sabe leer vuelve a
+ * fallar en CADA sync mientras nadie arregle nada, así que sin él la red de la
+ * IA se convertiría en una llamada a Gemini por correo y por corrida, para
+ * siempre. Quien llama usa el valor para intentar la IA UNA vez por correo.
+ *
+ * `ignoreDuplicates` en vez de refrescar la fila: si el mismo correo reaparece
+ * cien veces sigue siendo el mismo correo, y refrescar `expires_at` lo
+ * mantendría vivo indefinidamente — justo lo contrario de lo que promete la
+ * política de privacidad.
  *
  * Fallo suave y deliberado: esto existe para ARREGLAR el sync, así que jamás
- * puede tumbarlo. Si el cifrado o la escritura fallan, se loguea y el sync
- * sigue como si nada.
+ * puede tumbarlo. Si el cifrado o la escritura fallan, se loguea, se devuelve
+ * `false` (no intentar la IA) y el sync sigue como si nada.
  */
-export async function saveFailedEmail(input: FailedEmailInput): Promise<void> {
+export async function saveFailedEmail(input: FailedEmailInput): Promise<boolean> {
   try {
     const expiresAt = new Date(Date.now() + FAILED_EMAIL_RETENTION_DAYS * 86_400_000);
-    const { error } = await getSupabaseAdmin()
+    const { data, error } = await getSupabaseAdmin()
       .from("failed_emails")
       .upsert(
         {
@@ -67,11 +73,15 @@ export async function saveFailedEmail(input: FailedEmailInput): Promise<void> {
           body_enc: encryptToken(input.body),
           expires_at: expiresAt.toISOString(),
         },
-        { onConflict: "user_id,gmail_message_id" },
-      );
+        { onConflict: "user_id,gmail_message_id", ignoreDuplicates: true },
+      )
+      .select("id");
     if (error) throw new Error(error.message);
+    // Con ignoreDuplicates, `data` solo trae las filas realmente insertadas.
+    return (data ?? []).length > 0;
   } catch (err) {
     console.error("[saveFailedEmail] no se pudo guardar la muestra:", err);
+    return false;
   }
 }
 

@@ -22,6 +22,15 @@ import { getUsdToDopRate } from "./exchange-rate";
 import { sendPushToUser } from "./push";
 import type { Currency } from "./types";
 
+/**
+ * Tope de correos que la IA intenta leer por corrida. El sync vive en una
+ * función serverless con 60s de límite y cada llamada a Gemini tarda uno o dos
+ * segundos; sin tope, el día que un banco cambia el formato —que es
+ * exactamente cuando esto se activa— cincuenta correos rotos agotarían el
+ * tiempo y tumbarían el sync entero.
+ */
+const AI_PARSE_LIMIT = 8;
+
 export interface SyncResult {
   synced: number;
   errors: string[];
@@ -234,6 +243,8 @@ export async function runSyncForUser(
   const autoExpenseByCategory = new Map<string, number>();
   // Asuntos cuyo esqueleto ya se adjuntó en esta corrida (ver más abajo).
   const described = new Set<string>();
+  /** Llamadas a Gemini gastadas en leer correos rotos en esta corrida. */
+  let aiAttempts = 0;
   for (const email of newEmails) {
     /** true si esta transacción la leyó la IA y no un parser de regex. Decide
      *  dos cosas más abajo: `source` y que NO pueda auto-confirmarse. */
@@ -276,7 +287,7 @@ export async function runSyncForUser(
         // depende la política de privacidad: aquí solo se llega si el correo
         // no se pudo parsear Y tampoco es ruido esperado. Un correo que sí se
         // leyó nunca pasa por esta línea.
-        await saveFailedEmail({
+        const primeraVez = await saveFailedEmail({
           userId,
           gmailMessageId: email.id,
           bank,
@@ -296,12 +307,28 @@ export async function runSyncForUser(
         // guardada justo para eso, y el aviso de Discord sigue saliendo. Los
         // parsers de regex son deterministas y están cubiertos por tests con
         // correos reales; esto solo tapa el hueco mientras tanto.
-        const aiParsed = await parseEmailWithAi({
-          bank,
-          subject: email.subject,
-          body: /<[a-z][\s\S]*>/i.test(email.body) ? htmlToText(email.body) : email.body,
-          receivedAt: email.receivedAt,
-        });
+        //
+        // Dos frenos, los dos aprendidos de para QUÉ existe esto: cuando un
+        // banco cambia el formato fallan MUCHOS correos a la vez.
+        //  - `primeraVez`: un correo que ni el regex ni la IA supieron leer
+        //    vuelve a aparecer en cada sync para siempre (nunca se inserta,
+        //    así que nunca queda registrado como visto). Sin este freno sería
+        //    una llamada a Gemini por correo y por corrida, eternamente.
+        //  - `AI_PARSE_LIMIT`: el sync corre en una función con 60s de tope
+        //    (`maxDuration`). Cincuenta llamadas a Gemini en serie lo revientan
+        //    y se cae el sync ENTERO — peor que el problema que viene a tapar.
+        //    Lo que pasa del tope se queda como muestra guardada, que es lo que
+        //    de verdad arregla el parser.
+        const aiParsed =
+          primeraVez && aiAttempts < AI_PARSE_LIMIT
+            ? ((aiAttempts += 1),
+              await parseEmailWithAi({
+                bank,
+                subject: email.subject,
+                body: /<[a-z][\s\S]*>/i.test(email.body) ? htmlToText(email.body) : email.body,
+                receivedAt: email.receivedAt,
+              }))
+            : null;
         if (aiParsed) {
           parsed = aiParsed;
           readByAi = true;
@@ -364,7 +391,11 @@ export async function runSyncForUser(
       confirmed: autoCategory !== null,
       auto_confirmed: autoCategory !== null,
       source: readByAi ? "ai" : "email",
-      raw_email_snippet: email.snippet,
+      // `raw_email_snippet` ya NO se escribe (migración 0018): guardaba ~200
+      // caracteres del cuerpo en cada fila, no se mostraba en ninguna parte y
+      // contradecía la política de privacidad. Para depurar un parser está
+      // `failed_emails`, que guarda el correo entero, cifrado y con caducidad,
+      // y solo cuando de verdad falló.
     });
 
     if (insertError) {

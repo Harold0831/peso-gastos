@@ -124,6 +124,7 @@ supabase/
 ├── migrations/0015_...sql   # auto_confirmed + users.auto_confirm_enabled
 ├── migrations/0016_...sql   # categories.icon: de emoji a claves de SVG
 ├── migrations/0017_...sql   # failed_emails (muestras cifradas) + source 'ai'
+├── migrations/0018_...sql   # deja de guardar raw_email_snippet (y lo vacía)
 └── seed.sql                 # Categorías por defecto (globales, user_id null)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
@@ -546,6 +547,16 @@ sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
     formato que nadie ha verificado, y confirmar es el momento en que una
     persona los mira. Los parsers de regex siguen siendo la vía principal
     porque son deterministas y tienen tests con correos reales.
+    **Dos frenos, los dos aprendidos de para QUÉ existe esto** — cuando un banco
+    cambia el formato fallan MUCHOS correos a la vez: (1) la IA se intenta solo
+    la PRIMERA vez que se ve cada correo (`saveFailedEmail` devuelve si la fila
+    era nueva), porque un correo que ni el regex ni la IA saben leer nunca llega
+    a insertarse y por tanto reaparece en CADA sync para siempre — sin este
+    freno sería una llamada a Gemini por correo y por corrida, eternamente; y
+    (2) `AI_PARSE_LIMIT` = 8 por corrida, porque el sync vive en una función con
+    60s de tope y cincuenta llamadas en serie lo revientan, tumbando el sync
+    ENTERO justo el día que esto tenía que salvarlo. Lo que pasa del tope se
+    queda como muestra guardada, que es lo que de verdad arregla el parser.
     `ai-email-parser.test.ts` no comprueba que Gemini acierte (no se puede) sino
     lo contrario: que nada de lo que devuelva se convierta en una fila a medias
     — sin monto, con monto 0 o negativo, sin comercio, sin tipo, con una fecha
@@ -557,6 +568,14 @@ sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
     dura, para qué se usa) y `LEGAL_UPDATED` se movió. Nota para quien despliegue
     esto: Google restringe la **revisión humana** de datos del scope
     `gmail.readonly`, y leer el correo crudo de otro usuario cae ahí.
+  - **`raw_email_snippet` dejó de escribirse** (migración `0018`). Guardaba el
+    `snippet` de Gmail —unos 200 caracteres del cuerpo— en CADA transacción
+    desde la migración 0001, nunca se mostró en ninguna pantalla ni se exporta
+    al CSV, y contradecía la frase "el cuerpo del mensaje se descarta" desde el
+    primer día. Salió a la luz al revisar la política para lo de arriba. El
+    arreglo no fue documentarlo sino dejar de guardarlo y vaciar lo que había:
+    para depurar un parser ya existe `failed_emails`, que guarda el correo
+    entero, cifrado, con caducidad y solo cuando de verdad falló.
 - **Rate limiting** (`rate_limits` + `check_rate_limit()`, migración `0014`):
   el contador vive en Postgres, NO en memoria — la app corre en funciones
   serverless y cada petición puede caer en una instancia distinta, así que un
