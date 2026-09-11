@@ -83,6 +83,7 @@ const USER_SCOPED_TABLES = [
   "api_tokens",
   "webauthn_credentials",
   "feedback",
+  "failed_emails",
 ];
 
 /** users se toca por su clave primaria; rate_limits no es de un usuario. */

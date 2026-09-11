@@ -32,8 +32,8 @@ export default function PrivacyPage() {
         <li>Tus datos financieros son tuyos y solo tú los ves dentro de la app.</li>
         <li>Peso no vende ni alquila tu información a nadie, ni la usa para publicidad.</li>
         <li>
-          Si vinculas tu Gmail, Peso lee <strong>únicamente</strong> las notificaciones de los bancos
-          que hayas activado — nunca el resto de tu correo.
+          Si vinculas tu Gmail, Peso lee <strong>únicamente</strong> las notificaciones de los
+          bancos que hayas activado — nunca el resto de tu correo.
         </li>
         <li>
           Puedes eliminar tu cuenta y todos tus datos en cualquier momento desde tu perfil, sin
@@ -50,15 +50,18 @@ export default function PrivacyPage() {
           cuenta de Google.
         </li>
         <li>
-          Si te registras con correo y contraseña: tu correo, tu nombre y un{" "}
-          <strong>hash</strong> de tu contraseña (scrypt). La contraseña en sí nunca se guarda y no
-          se puede recuperar del hash.
+          Si te registras con correo y contraseña: tu correo, tu nombre y un <strong>hash</strong>{" "}
+          de tu contraseña (scrypt). La contraseña en sí nunca se guarda y no se puede recuperar del
+          hash.
         </li>
       </ul>
 
       <h3>Datos financieros que tú registras o que Peso importa</h3>
       <ul>
-        <li>Transacciones: monto, moneda, fecha, comercio, categoría y últimos 4 dígitos de la tarjeta cuando el banco los incluye.</li>
+        <li>
+          Transacciones: monto, moneda, fecha, comercio, categoría y últimos 4 dígitos de la tarjeta
+          cuando el banco los incluye.
+        </li>
         <li>Presupuestos, metas de ahorro, gastos fijos, tarjetas y categorías que crees.</li>
         <li>Tu saldo de apertura, si lo ajustas manualmente.</li>
       </ul>
@@ -70,15 +73,20 @@ export default function PrivacyPage() {
           <strong>cifrado</strong> (AES-256-GCM), y el identificador de cada correo ya procesado
           para no importarlo dos veces.
         </li>
-        <li>Si activas Face ID: la clave pública de tu passkey (nunca tu huella ni tu rostro, que jamás salen de tu dispositivo).</li>
-        <li>Si activas notificaciones: la dirección de envío que te asigna tu navegador o sistema.</li>
+        <li>
+          Si activas Face ID: la clave pública de tu passkey (nunca tu huella ni tu rostro, que
+          jamás salen de tu dispositivo).
+        </li>
+        <li>
+          Si activas notificaciones: la dirección de envío que te asigna tu navegador o sistema.
+        </li>
         <li>Si usas el atajo de voz de iOS: un hash del token de ese atajo.</li>
         <li>Los comentarios que envíes desde la sección de sugerencias de tu perfil.</li>
       </ul>
 
       <p>
-        Peso <strong>no</strong> usa cookies de publicidad ni de analítica, ni rastrea tu navegación.
-        La única cookie es la de tu sesión, necesaria para mantenerte dentro de la app.
+        Peso <strong>no</strong> usa cookies de publicidad ni de analítica, ni rastrea tu
+        navegación. La única cookie es la de tu sesión, necesaria para mantenerte dentro de la app.
       </p>
 
       <h2>Cómo usa Peso el acceso a tu Gmail</h2>
@@ -95,9 +103,24 @@ export default function PrivacyPage() {
           nunca se descargan ni se leen.
         </li>
         <li>
-          <strong>No se guarda el correo.</strong> De cada notificación bancaria se extraen el monto,
-          la fecha, el comercio y la tarjeta; el cuerpo del mensaje se descarta y no queda
+          <strong>No se guarda el correo.</strong> De cada notificación bancaria se extraen el
+          monto, la fecha, el comercio y la tarjeta; el cuerpo del mensaje se descarta y no queda
           almacenado.
+        </li>
+        <li>
+          <strong>Única excepción: los correos que Peso no logra leer.</strong> Cuando un banco
+          cambia el formato de sus notificaciones, Peso deja de entenderlas y tus transacciones
+          dejarían de aparecer sin que nadie se entere. Para poder arreglarlo, ese correo —y solo
+          ese— se guarda <strong>cifrado</strong> durante un máximo de 30 días y después se borra
+          automáticamente. Un correo que Peso sí supo leer nunca se guarda. Estas copias se usan
+          exclusivamente para corregir el lector de ese banco, y quien mantiene la aplicación puede
+          consultarlas con ese fin.
+        </li>
+        <li>
+          <strong>Ese mismo correo se envía a Google Gemini</strong> para intentar extraer la
+          transacción mientras el lector no está arreglado, de modo que no pierdas el movimiento. Es
+          el mismo servicio que ya sugiere la categoría de tus gastos. Google no usa estos datos
+          para entrenar sus modelos.
         </li>
         <li>
           <strong>Nunca se envía, borra ni modifica</strong> nada en tu cuenta de Gmail. El permiso
@@ -151,8 +174,8 @@ export default function PrivacyPage() {
         <li>
           <strong>Google (Gemini API)</strong> — para sugerirte una categoría, Peso le envía{" "}
           <em>el nombre del comercio, el monto, la moneda y si es gasto o ingreso</em>. No se le
-          envía tu nombre, tu correo, tu número de tarjeta ni el correo original. Si usas el atajo de
-          voz, también recibe la frase que dictaste.
+          envía tu nombre, tu correo, tu número de tarjeta ni el correo original. Si usas el atajo
+          de voz, también recibe la frase que dictaste.
         </li>
         <li>
           <strong>open.er-api.com</strong> — la tasa de cambio del día. No recibe ningún dato tuyo:
@@ -179,6 +202,12 @@ export default function PrivacyPage() {
         de seguridad de la base de datos pueden conservar los datos unos días más antes de rotarse.
       </p>
 
+      <p>
+        Los correos que Peso no logró leer (ver arriba) son la excepción a &ldquo;mientras tengas la
+        cuenta&rdquo;: se borran solos a los <strong>30 días</strong> como máximo, tengas la cuenta
+        abierta o no, y también desaparecen de inmediato si eliminas tu cuenta.
+      </p>
+
       <h2>Tus derechos</h2>
 
       <ul>
@@ -200,9 +229,9 @@ export default function PrivacyPage() {
 
       <p>
         La conexión siempre va cifrada (HTTPS). Los tokens de Gmail se guardan cifrados con
-        AES-256-GCM y las contraseñas como hash scrypt. Cada consulta a la base de datos está acotada
-        a tu usuario. Aun así, ningún sistema es infalible: Peso es un proyecto pequeño y no puede
-        garantizar seguridad absoluta.
+        AES-256-GCM y las contraseñas como hash scrypt. Cada consulta a la base de datos está
+        acotada a tu usuario. Aun así, ningún sistema es infalible: Peso es un proyecto pequeño y no
+        puede garantizar seguridad absoluta.
       </p>
 
       <h2>Menores de edad</h2>
@@ -219,7 +248,8 @@ export default function PrivacyPage() {
       <h2>Contacto</h2>
 
       <p>
-        Para cualquier duda sobre tus datos, escribe a <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+        Para cualquier duda sobre tus datos, escribe a{" "}
+        <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
       </p>
 
       <p>

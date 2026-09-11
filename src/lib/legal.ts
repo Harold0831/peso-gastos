@@ -6,7 +6,7 @@
  * actualización" debe decir cuándo cambió el TEXTO, no cuándo se abrió la
  * página. Actualízala al editar /privacy o /terms.
  */
-export const LEGAL_UPDATED = "31 de agosto de 2026";
+export const LEGAL_UPDATED = "11 de septiembre de 2026";
 
 /**
  * Correo de contacto que exigen la política de privacidad y los términos.

@@ -20,8 +20,8 @@ export default function TermsPage() {
       <p className="updated">Última actualización: {LEGAL_UPDATED}</p>
 
       <p>
-        Al crear una cuenta en Peso aceptas estos términos. Están escritos para que se entiendan:
-        si algo no te queda claro, escribe antes de usar la app.
+        Al crear una cuenta en Peso aceptas estos términos. Están escritos para que se entiendan: si
+        algo no te queda claro, escribe antes de usar la app.
       </p>
 
       <h2>Qué es Peso</h2>
@@ -76,11 +76,9 @@ export default function TermsPage() {
       </ul>
 
       <p>
-        <strong>
-          La fuente de verdad de tu dinero es tu banco, no Peso.
-        </strong>{" "}
-        No tomes decisiones financieras, fiscales o legales basándote únicamente en lo que veas aquí,
-        y verifica siempre contra tus estados de cuenta.
+        <strong>La fuente de verdad de tu dinero es tu banco, no Peso.</strong> No tomes decisiones
+        financieras, fiscales o legales basándote únicamente en lo que veas aquí, y verifica siempre
+        contra tus estados de cuenta.
       </p>
 
       <h2>Disponibilidad del servicio</h2>

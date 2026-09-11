@@ -8,13 +8,14 @@ import {
   sendersForBanks,
 } from "./bank-parser";
 import { describeEmailStructure, labelsPresent } from "./email-structure";
+import { saveFailedEmail } from "./failed-emails";
 import { matchesRule } from "./merchant-history";
 import { loadMerchantRules, visibleCategoryNames } from "./auto-confirm";
 import { budgetAlertBody, detectBudgetCrossing } from "./budget-alert";
 import { formatMoney } from "./format";
 import { getHomeCurrencyForUser } from "./users";
 import { htmlToText } from "./qik-parser";
-import { suggestCategory } from "./gemini";
+import { parseEmailWithAi, suggestCategory } from "./gemini";
 import { getSupabaseAdmin } from "./supabase";
 import { decryptToken } from "./crypto";
 import { getUsdToDopRate } from "./exchange-rate";
@@ -234,7 +235,10 @@ export async function runSyncForUser(
   // Asuntos cuyo esqueleto ya se adjuntó en esta corrida (ver más abajo).
   const described = new Set<string>();
   for (const email of newEmails) {
-    const parsed = parseBankEmail(email.from, email.subject, email.body, email.receivedAt);
+    /** true si esta transacción la leyó la IA y no un parser de regex. Decide
+     *  dos cosas más abajo: `source` y que NO pueda auto-confirmarse. */
+    let readByAi = false;
+    let parsed = parseBankEmail(email.from, email.subject, email.body, email.receivedAt);
     if (!parsed) {
       // Estados de cuenta, códigos CASH creados/vencidos, etc.: no son
       // transacciones y no representan un error de parseo.
@@ -261,8 +265,50 @@ export async function runSyncForUser(
             ].join("\n"),
           );
         }
+
+        // Guarda el correo COMPLETO, cifrado y con caducidad, para poder
+        // arreglar el parser. El esqueleto de arriba dice qué etiquetas hay y
+        // en qué orden, pero cuando un banco cambia el formato entero se queda
+        // corto — con el Popular el aviso decía "Etiquetas encontradas:
+        // ninguna", que no da con qué trabajar.
+        //
+        // Va DENTRO de este `if`, no fuera, y eso es la garantía de la que
+        // depende la política de privacidad: aquí solo se llega si el correo
+        // no se pudo parsear Y tampoco es ruido esperado. Un correo que sí se
+        // leyó nunca pasa por esta línea.
+        await saveFailedEmail({
+          userId,
+          gmailMessageId: email.id,
+          bank,
+          subject: email.subject,
+          from: email.from,
+          receivedAt: email.receivedAt,
+          body: email.body,
+        });
+
+        // Red de seguridad: que el parser esté roto no debería costarle al
+        // usuario la transacción. Gemini lee el correo y, si saca algo
+        // coherente, entra COMO PENDIENTE — nunca auto-confirmada. Un modelo
+        // de lenguaje leyendo el monto del dinero de alguien tiene que pasar
+        // por ojos humanos antes de contar en un saldo o un presupuesto.
+        //
+        // Esto NO sustituye arreglar el parser: la muestra de arriba sigue
+        // guardada justo para eso, y el aviso de Discord sigue saliendo. Los
+        // parsers de regex son deterministas y están cubiertos por tests con
+        // correos reales; esto solo tapa el hueco mientras tanto.
+        const aiParsed = await parseEmailWithAi({
+          bank,
+          subject: email.subject,
+          body: /<[a-z][\s\S]*>/i.test(email.body) ? htmlToText(email.body) : email.body,
+          receivedAt: email.receivedAt,
+        });
+        if (aiParsed) {
+          parsed = aiParsed;
+          readByAi = true;
+          errors.push(`[${bank}] "${email.subject}" — leído por IA, entró sin confirmar`);
+        }
       }
-      continue;
+      if (!parsed) continue;
     }
 
     // Qik a veces notifica el mismo movimiento por dos canales distintos
@@ -284,7 +330,10 @@ export async function runSyncForUser(
     // ¿Comercio que el usuario ya categorizó varias veces? Entonces no hay
     // nada que preguntarle — ni a él ni a Gemini: su propio historial es más
     // confiable que una sugerencia de la IA, y encima sale gratis.
-    const auto = matchesRule(parsed, autoConfirmRules);
+    // `readByAi` corta la auto-confirmación de raíz: el historial del usuario
+    // puede reconocer el comercio, pero el monto y la fecha los sacó un modelo
+    // de un formato que nadie ha verificado todavía.
+    const auto = readByAi ? null : matchesRule(parsed, autoConfirmRules);
     // La categoría solo vale si sigue existiendo y visible para el usuario:
     // pudo haberla borrado u ocultado desde que la usó.
     const autoCategory = auto && categoryNames.includes(auto.category) ? auto.category : null;
@@ -314,7 +363,7 @@ export async function runSyncForUser(
       ai_suggested_category: suggestion?.category ?? null,
       confirmed: autoCategory !== null,
       auto_confirmed: autoCategory !== null,
-      source: "email",
+      source: readByAi ? "ai" : "email",
       raw_email_snippet: email.snippet,
     });
 

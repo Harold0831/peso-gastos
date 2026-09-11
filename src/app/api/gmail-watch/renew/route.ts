@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { GmailAuthError, watchGmailMailbox } from "@/lib/gmail";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase";
 import { decryptToken } from "@/lib/crypto";
+import { purgeExpiredFailedEmails } from "@/lib/failed-emails";
 
 export const maxDuration = 60;
 
@@ -66,5 +67,17 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ renewed, errors });
+  // Borra las muestras de correos que no se pudieron parsear y ya caducaron.
+  // Va aquí porque este cron ya existe y corre 1x/día: la caducidad que
+  // promete la política de privacidad tiene que ser un barrido real, no una
+  // fecha guardada que nadie mira. Fallo suave — que no se pueda purgar no
+  // debe hacer fracasar la renovación de los watches, que es lo crítico.
+  let purged = 0;
+  try {
+    purged = await purgeExpiredFailedEmails();
+  } catch (err) {
+    errors.push(`purga de muestras: ${err instanceof Error ? err.message : "Error"}`);
+  }
+
+  return NextResponse.json({ renewed, errors, purged });
 }

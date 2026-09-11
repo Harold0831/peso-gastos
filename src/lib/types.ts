@@ -1,8 +1,10 @@
 export type TransactionType = "expense" | "income";
 
-/** De dónde salió la transacción: parsing de correos, alta manual en la
- *  web, o captura por voz (Shortcut de iOS). NULL en filas pre-migración 0005. */
-export type TransactionSource = "email" | "manual" | "voice";
+/** De dónde salió la transacción: parsing de correos con regex, alta manual
+ *  en la web, captura por voz (Shortcut de iOS), o lectura del correo por IA
+ *  cuando el parser de ese banco falló (migración 0017). NULL en filas
+ *  pre-migración 0005. */
+export type TransactionSource = "email" | "manual" | "voice" | "ai";
 
 /** Monedas soportadas. `amount` siempre se guarda en su moneda original;
  *  la conversión a la moneda de casa del usuario para reportes usa

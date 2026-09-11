@@ -83,6 +83,7 @@ src/
 │   ├── merchant-history.ts # Reglas puras de auto-confirmación por comercio
 │   ├── auto-confirm.ts     # Lado servidor de esas reglas (historial + pendientes)
 │   ├── budget-alert.ts     # Regla del aviso de presupuesto (compartida)
+│   ├── failed-emails.ts    # Muestras cifradas de correos que el parser no supo leer
 │   ├── bank-parser.ts      # Registro de bancos: remitentes + dispatcher por From
 │   ├── qik-parser.ts       # Parser Qik (5 tipos; exporta htmlToText compartido)
 │   ├── popular-parser.ts   # Parser Banco Popular (6 tipos, tablas columnares)
@@ -122,6 +123,7 @@ supabase/
 ├── migrations/0014_...sql   # rate_limits + check_rate_limit() (freno por IP)
 ├── migrations/0015_...sql   # auto_confirmed + users.auto_confirm_enabled
 ├── migrations/0016_...sql   # categories.icon: de emoji a claves de SVG
+├── migrations/0017_...sql   # failed_emails (muestras cifradas) + source 'ai'
 └── seed.sql                 # Categorías por defecto (globales, user_id null)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
@@ -518,6 +520,43 @@ sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
   sync y serían decenas de notificaciones diciendo lo mismo. Todo opcional y
   con fallo suave: sin la env var no se manda nada, y un aviso que falla nunca
   tumba el sync que lo estaba reportando.
+- **Red para cuando un parser se rompe** (migración `0017`,
+  `failed-emails.ts` + `parseEmailWithAi` en `gemini.ts`): el monitoreo avisa
+  de QUE un banco cambió el formato, pero avisar no arregla nada — el usuario
+  igual pierde la transacción, y quien opera la instancia no tiene el correo
+  para escribir el arreglo (el webhook dispara para el buzón que CAMBIÓ, así
+  que el correo casi siempre es de otra persona). Dos mitades:
+  - **Se guarda el correo que falló**, cifrado con la misma clave que los
+    refresh tokens (AES-256-GCM) y con `expires_at`; el cron diario que renueva
+    los watches lo purga (`purgeExpiredFailedEmails`), porque una caducidad que
+    nadie barre es una promesa vacía. Retención: `FAILED_EMAIL_RETENTION_DAYS`
+    = 30. `upsert` sobre `(user_id, gmail_message_id)` — un correo roto vuelve a
+    fallar en CADA sync y acumularía una fila por corrida.
+    **Solo fallos**: la llamada vive DENTRO del `if` que ya distingue "no se
+    pudo parsear" de "es ruido esperado" (`isIgnorableBankEmail`). Un correo
+    que sí se leyó nunca pasa por esa línea, y de eso depende la política de
+    privacidad. Se lee con `GET /api/admin/failed-emails` (Bearer
+    `ADMIN_SECRET`, limitado por IP), que devuelve el cuerpo descifrado y **no**
+    el user_id: para arreglar un parser hace falta el formato, no saber de quién
+    es el correo.
+  - **Gemini lee el correo mientras tanto** (`parseEmailWithAi`). Lo que saca
+    entra SIEMPRE sin confirmar y **nunca** se auto-confirma —`readByAi` corta
+    esa vía de raíz— y se marca con `source='ai'`, que el detalle muestra en un
+    banner ámbar. No es purismo: el monto y la fecha los dedujo un modelo de un
+    formato que nadie ha verificado, y confirmar es el momento en que una
+    persona los mira. Los parsers de regex siguen siendo la vía principal
+    porque son deterministas y tienen tests con correos reales.
+    `ai-email-parser.test.ts` no comprueba que Gemini acierte (no se puede) sino
+    lo contrario: que nada de lo que devuelva se convierta en una fila a medias
+    — sin monto, con monto 0 o negativo, sin comercio, sin tipo, con una fecha
+    inventada, o cuando el correo ni siquiera es una transacción. Verificado
+    anulando la validación de campos mínimos: el test falla nombrando el caso.
+    **Esto cambió la política de privacidad**, no solo el código: la frase "el
+    cuerpo del mensaje se descarta" dejó de ser cierta sin excepción, y el cuerpo
+    ahora viaja a Gemini. `/privacy` lo dice explícitamente (qué se guarda, cuánto
+    dura, para qué se usa) y `LEGAL_UPDATED` se movió. Nota para quien despliegue
+    esto: Google restringe la **revisión humana** de datos del scope
+    `gmail.readonly`, y leer el correo crudo de otro usuario cae ahí.
 - **Rate limiting** (`rate_limits` + `check_rate_limit()`, migración `0014`):
   el contador vive en Postgres, NO en memoria — la app corre en funciones
   serverless y cada petición puede caer en una instancia distinta, así que un

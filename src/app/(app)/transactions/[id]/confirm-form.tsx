@@ -230,11 +230,13 @@ export function ConfirmForm({
                 "Origen",
                 tx.source === "email"
                   ? "Correo del banco"
-                  : tx.source === "voice"
-                    ? "Atajo de voz"
-                    : tx.source === "manual"
-                      ? "Manual"
-                      : "—",
+                  : tx.source === "ai"
+                    ? "Correo leído por IA"
+                    : tx.source === "voice"
+                      ? "Atajo de voz"
+                      : tx.source === "manual"
+                        ? "Manual"
+                        : "—",
               ],
             ] as const
           ).map(([label, value], i, all) => (
@@ -249,6 +251,22 @@ export function ConfirmForm({
             </div>
           ))}
         </section>
+      )}
+
+      {/* Leída por IA: el parser de ese banco falló y Gemini sacó los campos
+          del correo. Decirlo aquí no es un detalle técnico — el monto y la
+          fecha los dedujo un modelo de un formato que nadie ha verificado, y
+          quien confirma tiene derecho a mirarlos con otros ojos. */}
+      {tx.source === "ai" && (
+        <div className="mx-5 mt-5 rounded-card border border-warning/30 bg-warning/10 px-4 py-3">
+          <p className="text-[13px] font-semibold tracking-tight text-warning">
+            Leída automáticamente del correo
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
+            Tu banco cambió el formato de sus notificaciones y Peso no pudo leerla como siempre, así
+            que la interpretó con IA. Revisa el monto y la fecha antes de confirmar.
+          </p>
+        </div>
       )}
 
       {/* Peso confirmó esta sola: decirlo aquí, donde la categoría se puede

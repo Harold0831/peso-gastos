@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { currencySymbol } from "./format";
-import type { Currency, TransactionType } from "./types";
+import type { Currency, ParsedBankEmail, TransactionType } from "./types";
 
 /**
  * Categorización automática y captura por voz vía Gemini REST. Ambas
@@ -174,5 +174,112 @@ Responde SOLO con JSON: {"amount": <número o null>, "description": "<texto>", "
     amount: parsed.data.amount,
     description: parsed.data.description.trim() || "Gasto",
     category,
+  };
+}
+
+/**
+ * Esquema de un correo bancario leído por la IA. Todo puede venir null: es
+ * preferible que Gemini admita que no sabe a que invente un monto.
+ */
+const emailSchema = z.object({
+  type: z.enum(["expense", "income"]).nullable(),
+  merchant: z.string().nullable(),
+  amount: z.number().nullable(),
+  currency: z.enum(["DOP", "USD", "EUR"]).nullable(),
+  date: z.string().nullable(),
+  card_last4: z.string().nullable(),
+  is_transaction: z.boolean(),
+});
+
+/**
+ * Lee un correo bancario que NINGÚN parser de regex supo leer.
+ *
+ * Es una RED, no un reemplazo. Los parsers de regex siguen siendo la vía
+ * principal porque son deterministas y están cubiertos por tests con correos
+ * reales; esto solo entra cuando uno falla, que es justo el escenario en el
+ * que hoy las transacciones desaparecen en silencio.
+ *
+ * Lo que sale de aquí SIEMPRE entra sin confirmar y sin auto-confirmación
+ * (ver runSyncForUser): un modelo de lenguaje leyendo el monto del dinero de
+ * alguien tiene que pasar por ojos humanos antes de contar en un saldo o en
+ * un presupuesto. Por eso también se marca la fila con `source='ai'`.
+ *
+ * Recibe TEXTO plano (htmlToText), no el HTML: el markup no aporta nada para
+ * extraer campos y multiplicaría los tokens por diez.
+ *
+ * `receivedAt` se pasa porque hay bancos cuyos correos traen hora pero no
+ * fecha (Scotiabank), igual que los parsers de regex.
+ */
+export async function parseEmailWithAi(input: {
+  bank: string;
+  subject: string;
+  body: string;
+  receivedAt: Date;
+}): Promise<ParsedBankEmail | null> {
+  // Recorte defensivo: un correo bancario útil cabe de sobra, y evita mandar
+  // un boletín gigante que se colara por el filtro de remitentes.
+  const body = input.body.slice(0, 6000);
+
+  const prompt = `Eres un extractor de datos de notificaciones bancarias de República Dominicana.
+Lee este correo del banco ${input.bank} y extrae la transacción.
+
+Asunto: ${input.subject}
+Fecha de recepción: ${input.receivedAt.toISOString()}
+
+Cuerpo:
+${body}
+
+Reglas:
+- "is_transaction": false si el correo NO es un movimiento de dinero (estado de cuenta, clave de un solo uso, aviso de vencimiento, promoción, compra DECLINADA o rechazada). En ese caso todo lo demás va null.
+- "type": "expense" si sale dinero (compra, retiro, pago, transferencia enviada), "income" si entra (depósito, transferencia recibida, reembolso, nómina).
+- "amount": número positivo, sin símbolo ni separador de miles. Usa el monto de ESTA transacción, nunca el balance disponible ni el límite de la tarjeta.
+- "currency": "DOP" para RD$/pesos, "USD" para US$/dólares, "EUR" para euros.
+- "date": fecha y hora en ISO 8601 con zona horaria. La hora de RD es AST (UTC-4, sin horario de verano). Si el correo trae fecha sin hora, usa las 12:00 de ese día. Si no trae fecha, usa la de recepción.
+- "card_last4": los últimos 4 dígitos de la tarjeta si aparecen; si no, null.
+- Si un campo no está en el correo, usa null. NO inventes valores.
+
+Responde SOLO con JSON: {"is_transaction": <bool>, "type": <"expense"|"income"|null>, "merchant": <texto|null>, "amount": <número|null>, "currency": <"DOP"|"USD"|"EUR"|null>, "date": <ISO|null>, "card_last4": <texto|null>}`;
+
+  const text = await callGemini(prompt, "parseEmailWithAi");
+  if (!text) return null;
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    console.error("[parseEmailWithAi] Gemini no devolvió JSON:", text.slice(0, 300));
+    return null;
+  }
+
+  const parsed = emailSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.error("[parseEmailWithAi] JSON inválido:", text.slice(0, 300), parsed.error.message);
+    return null;
+  }
+
+  const d = parsed.data;
+  if (!d.is_transaction) return null;
+
+  // Sin monto, tipo o comercio no hay transacción que insertar. Preferimos
+  // no registrar nada antes que registrar una fila a medias que el usuario
+  // tendría que descifrar.
+  if (d.amount === null || d.amount <= 0 || !d.type || !d.merchant?.trim()) {
+    console.error("[parseEmailWithAi] Faltan campos mínimos:", text.slice(0, 300));
+    return null;
+  }
+
+  // Una fecha inventada o mal formada rompería el mes de la transacción; el
+  // correo llegó cuando llegó, así que ese es el respaldo honesto.
+  const date = d.date ? new Date(d.date) : input.receivedAt;
+  const validDate = Number.isNaN(date.getTime()) ? input.receivedAt : date;
+
+  return {
+    type: d.type,
+    merchant: d.merchant.trim().slice(0, 120),
+    amount: d.amount,
+    currency: d.currency ?? "DOP",
+    date: validDate,
+    card_last4: d.card_last4?.replace(/\D/g, "").slice(-4) || null,
+    available_balance: null,
   };
 }

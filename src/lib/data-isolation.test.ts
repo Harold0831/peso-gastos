@@ -65,6 +65,7 @@ const USER_SCOPED_TABLES = [
   "api_tokens",
   "webauthn_credentials",
   "feedback",
+  "failed_emails",
 ];
 
 /**
