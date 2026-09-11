@@ -198,6 +198,12 @@ describe("isIgnorablePopularEmail", () => {
     expect(isIgnorablePopularEmail("Notificación de Tarjeta bloqueada por seguridad")).toBe(true);
   });
 
+  it("ignora la cancelación de una tarjeta", () => {
+    // Avisa de que la tarjeta dejó de existir, no de un movimiento de dinero.
+    expect(isIgnorablePopularEmail("Cancelacion tarjeta de débito")).toBe(true);
+    expect(isIgnorablePopularEmail("Cancelación de tarjeta de crédito")).toBe(true);
+  });
+
   it("no ignora un consumo", () => {
     expect(isIgnorablePopularEmail("Notificación de Consumo")).toBe(false);
   });

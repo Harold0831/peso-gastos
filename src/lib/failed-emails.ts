@@ -105,6 +105,10 @@ export interface FailedEmailSample {
 export async function listFailedEmails(options?: {
   bank?: string;
   limit?: number;
+  /** Filtra por asunto (parcial, sin distinguir mayúsculas). */
+  subject?: string;
+  /** `gmail_message_id` exacto — el que sale en el aviso de monitoreo. */
+  messageId?: string;
 }): Promise<FailedEmailSample[]> {
   let query = getSupabaseAdmin()
     .from("failed_emails")
@@ -112,6 +116,13 @@ export async function listFailedEmails(options?: {
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false })
     .limit(options?.limit ?? 20);
+  // Los filtros finos existen para pedir MENOS: cada muestra es una
+  // notificación bancaria de otra persona, y para arreglar un parser hace
+  // falta UN correo de cada formato, no la tabla entera. El aviso de
+  // monitoreo ya trae el `gmail_message_id`, así que `messageId` permite
+  // pedir exactamente el correo que falló.
+  if (options?.messageId) query = query.eq("gmail_message_id", options.messageId);
+  if (options?.subject) query = query.ilike("subject", `%${options.subject}%`);
   // Tolerante a propósito: `bank` guarda el ID (`popular`), pero las filas
   // anteriores al arreglo guardaron el NOMBRE ("Banco Popular") — y quien
   // teclea el curl puede poner cualquiera de los dos. `ilike` cubre ambos sin

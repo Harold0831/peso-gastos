@@ -23,6 +23,12 @@ import { RATE_LIMITED_MESSAGE, checkRateLimit, clientIp } from "@/lib/rate-limit
  *
  *   curl "https://.../api/admin/failed-emails?bank=popular" \
  *     -H "Authorization: Bearer $ADMIN_SECRET"
+ *
+ * Acepta `?message=<gmail_message_id>` (el id que sale en el aviso de
+ * monitoreo) y `?subject=consumo` para pedir UNA muestra en vez de la tabla.
+ * No es comodidad: cada fila es el correo bancario de otra persona, y para
+ * escribir un parser hace falta un correo de cada FORMATO, no cincuenta del
+ * mismo. Pedir menos es parte de lo que hace aceptable que esto exista.
  */
 export async function GET(request: NextRequest) {
   const secret = process.env.ADMIN_SECRET;
@@ -43,6 +49,8 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const bank = searchParams.get("bank") ?? undefined;
+  const subject = searchParams.get("subject") ?? undefined;
+  const messageId = searchParams.get("message") ?? undefined;
   const limit = Number(searchParams.get("limit")) || 20;
 
   try {
@@ -50,7 +58,12 @@ export async function GET(request: NextRequest) {
     // arreglar un parser hace falta el formato del mensaje, no saber de quién
     // es. El buzón afectado ya va en el aviso de Discord si hiciera falta
     // pedirle permiso a alguien.
-    const samples = await listFailedEmails({ bank, limit: Math.min(limit, 50) });
+    const samples = await listFailedEmails({
+      bank,
+      subject,
+      messageId,
+      limit: Math.min(limit, 50),
+    });
     return NextResponse.json({ count: samples.length, samples });
   } catch (err) {
     return NextResponse.json(

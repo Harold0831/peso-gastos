@@ -404,7 +404,16 @@ function buildReversoSobregiro(body: string): ParsedBankEmail | null {
  * fallo: el dinero nunca se movió y no hay nada que registrar.
  */
 export function isIgnorablePopularEmail(subject: string, rawBody?: string): boolean {
-  if (/actualizaci[oó]n de l[ií]mite|tarjeta bloqueada/i.test(subject)) return true;
+  // "Cancelacion tarjeta de débito" avisa de que una tarjeta dejó de existir
+  // (se reemplazó o se dio de baja). No mueve dinero: no hay nada que
+  // registrar, y sin esto se reportaba como un parser roto.
+  if (
+    /actualizaci[oó]n de l[ií]mite|tarjeta bloqueada|cancelaci[oó]n\s+(de\s+)?tarjeta/i.test(
+      subject,
+    )
+  ) {
+    return true;
+  }
   if (!rawBody) return false;
   const body = /<[a-z][\s\S]*>/i.test(rawBody) ? htmlToText(rawBody) : rawBody;
   return /\bdeclinad[ao]\b|\brechazad[ao]\b/i.test(body);
