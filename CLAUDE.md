@@ -634,8 +634,8 @@ no esté ahí nunca se sincroniza. **Para agregar un banco: consigue 2+
 correos reales (no adivines el formato — falló dos veces con Qik), crea su
 `<banco>-parser.ts` con fixtures en tests, y regístralo.**
 
-Bancos soportados (2026-08-03): **Qik** (5 tipos), **Banco Popular**
-(6 tipos — remitente `notificaciones@popularenlinea.com`, tablas
+Bancos soportados (2026-09-11): **Qik** (5 tipos), **Banco Popular**
+(7 tipos — remitente `notificaciones@popularenlinea.com`, tablas
 COLUMNARES: etiquetas primero y valores después, fechas en D/M/YYYY,
 D/M/YY y YYYYMMDD según el tipo, montos `RD$`/`RD $`/`RD` a secas),
 **Banco Caribe** (1 tipo confirmado — `notificaciones@bancocaribe.com.do`,
@@ -653,6 +653,34 @@ la fecha a veces llega en 24h con un sufijo "PM" pegado encima
 (`31/07/2026 17:32 PM`) — el parser detecta hora > 12 y la toma tal cual,
 ignorando el sufijo). El detalle de cada formato vive como doc comment en
 su parser.
+
+**Lo que se aprendió arreglando el Popular el 2026-09-11** (primer uso real
+de `/api/admin/failed-emails`, ver § Red para cuando un parser se rompe):
+
+- **La tabla columnar llega de DOS formas** y el parser solo conocía una.
+  La versión HTML pone cada celda en su línea; la de **texto plano** mete todas
+  las etiquetas en UNA línea separadas por **tabuladores**, y los valores
+  igual. `zipColumns()` intenta primero la forma clásica y cae a
+  `zipTabSeparated()`. No se pueden confundir: la línea de etiquetas con tabs
+  no termina en la primera etiqueta, y el formato de una-por-línea no tiene
+  tabs que partir.
+- **En la forma con tabuladores un valor puede partirse en varias líneas.**
+  `"STARBUCKS\nCUMAYASA"`, `"BANCO POPULAR\nOF. C. NACI"`. Por eso no se lee
+  una línea sino que se van UNIENDO hasta juntar tantos campos como etiquetas
+  — leer solo la primera daba "STARBUCKS" y perdía media mitad del comercio,
+  que además rompería la auto-confirmación por comercio.
+- **"Notificación transferencia recibida por canal digital" era un tipo que no
+  existía** en el parser, así que TODAS las transferencias recibidas se
+  perdían — y era el fallo más frecuente de la tabla de muestras. Es un
+  **ingreso**; comparte la estructura Monto/Fecha/Canal del depósito por ATM
+  pero se construye aparte, porque el texto que ve el usuario es distinto y el
+  banco puede cambiarlos por separado.
+- **"su cuenta terminada en 0386" NO va a `card_last4`.** Es una cuenta, no una
+  tarjeta: guardarla ahí crearía una tarjeta fantasma en /cards y agruparía
+  bajo ella transferencias hechas sin ninguna tarjeta.
+- Los fixtures de estos tres casos son correos reales **de otro usuario**, así
+  que el nombre y los últimos 4 dígitos van ENMASCARADOS a mano en el test —
+  los de Qik venían ya enmascarados por el propio banco, estos no.
 
 ### Qik
 

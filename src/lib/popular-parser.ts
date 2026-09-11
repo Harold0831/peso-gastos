@@ -15,11 +15,16 @@ import { htmlToText } from "./qik-parser";
  *   4. "Depósito por ATM"               → ingreso
  *   5. "Notificaciones Pagos al Instante transferencia enviada" → gasto
  *   6. "Notificacion Reverso a cuenta por sobregiro" → ingreso
+ *   7. "Notificación transferencia recibida por canal digital" → ingreso
+ *      (confirmado 2026-09-11)
  *
  * A diferencia de Qik (label: valor por línea), el Popular usa tablas
  * COLUMNARES: primero todas las etiquetas (Monto/Moneda/Fecha/Comercio/
- * Estatus) y después todos los valores en el mismo orden. zipColumns()
- * localiza la fila de etiquetas y empareja con las N líneas siguientes.
+ * Estatus) y después todos los valores en el mismo orden. Y las manda de DOS
+ * formas distintas, que zipColumns() soporta las dos: una etiqueta por línea
+ * (la versión HTML) o todas en una línea separadas por TABULADORES (la de
+ * texto plano, vista el 2026-09-11). En la segunda, un valor puede partirse
+ * en varias líneas — el nombre del comercio, sin ir más lejos.
  *
  * Formatos de fecha (ninguno trae hora → mediodía AST):
  *   - "20/12/2025" o "2/1/2026" (D/M/YYYY)
@@ -79,16 +84,67 @@ function extractCardLast4(body: string): string | null {
 export function zipColumns(body: string, labels: string[]): Map<string, string> | null {
   const lines = body
     .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  for (let i = 0; i + labels.length * 2 <= lines.length + 1; i++) {
+    .map((l) => l.replace(/\r/g, ""))
+    .filter((l) => l.trim());
+
+  return zipOnePerLine(lines, labels) ?? zipTabSeparated(lines, labels);
+}
+
+/** Forma clásica: una etiqueta por línea y después los valores en orden. */
+function zipOnePerLine(lines: string[], labels: string[]): Map<string, string> | null {
+  const trimmed = lines.map((l) => l.trim());
+  for (let i = 0; i + labels.length * 2 <= trimmed.length + 1; i++) {
     const matches = labels.every((label, k) =>
-      lines[i + k]?.toLowerCase().endsWith(label.toLowerCase()),
+      trimmed[i + k]?.toLowerCase().endsWith(label.toLowerCase()),
     );
     if (!matches) continue;
-    const values = lines.slice(i + labels.length, i + labels.length * 2);
+    const values = trimmed.slice(i + labels.length, i + labels.length * 2);
     if (values.length < labels.length) return null;
     return new Map(labels.map((label, k) => [label, values[k]]));
+  }
+  return null;
+}
+
+/**
+ * Forma vista en producción el 2026-09-11: TODAS las etiquetas en una sola
+ * línea separadas por tabuladores, y los valores igual.
+ *
+ * Llega así cuando el correo trae parte de texto plano (la versión en HTML sí
+ * pone cada celda en su línea). El parser solo conocía la primera forma, así
+ * que consumos y retiros dejaron de leerse en silencio.
+ *
+ * La trampa está en los valores: **un valor puede partirse en varias líneas**
+ * ("STARBUCKS\nCUMAYASA"). Por eso no se lee una línea sino que se van
+ * uniendo líneas hasta juntar tantos campos como etiquetas — quedarse en la
+ * primera daría "STARBUCKS" y perdería media mitad del nombre del comercio.
+ */
+function zipTabSeparated(lines: string[], labels: string[]): Map<string, string> | null {
+  const split = (line: string) => line.split("\t").map((c) => c.trim());
+  /** Quita las columnas vacías del final que deja el tab de cierre. */
+  const trimTrailing = (cells: string[]) => {
+    const out = [...cells];
+    while (out.length > 0 && out[out.length - 1] === "") out.pop();
+    return out;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const header = trimTrailing(split(lines[i]));
+    if (header.length !== labels.length) continue;
+    const isHeader = labels.every((label, k) => header[k]?.toLowerCase() === label.toLowerCase());
+    if (!isHeader) continue;
+
+    // Une líneas hasta completar las columnas. El tope evita tragarse el pie
+    // del correo si la tabla viniera incompleta.
+    let joined = "";
+    for (let j = i + 1; j < lines.length && j <= i + labels.length; j++) {
+      joined = joined ? `${joined} ${lines[j]}` : lines[j];
+      const values = trimTrailing(split(joined));
+      if (values.length === labels.length) {
+        return new Map(labels.map((label, k) => [label, values[k]]));
+      }
+      if (values.length > labels.length) return null; // más columnas que etiquetas: no es la tabla
+    }
+    return null;
   }
   return null;
 }
@@ -183,6 +239,42 @@ function buildDeposito(body: string): ParsedBankEmail | null {
   };
 }
 
+/**
+ * "Notificación transferencia recibida por canal digital" → INGRESO.
+ *
+ * Tipo nuevo, visto el 2026-09-11: no estaba en el parser, así que TODAS las
+ * transferencias recibidas por el Popular se perdían. Era además el fallo más
+ * frecuente de la tabla de muestras.
+ *
+ * Comparte estructura con el depósito por ATM (Monto/Fecha/Canal), pero se
+ * construye aparte porque el texto que ve el usuario es distinto y porque el
+ * banco puede cambiarlos por separado.
+ */
+function buildTransferenciaRecibida(body: string): ParsedBankEmail | null {
+  const cols = zipColumns(body, ["Monto", "Fecha", "Canal"]);
+  if (!cols) return null;
+
+  const amount = parsePopularAmount(cols.get("Monto") ?? "");
+  const date = parsePopularDate(cols.get("Fecha") ?? "");
+  if (amount === null || date === null) return null;
+
+  const canal = cols.get("Canal");
+  return {
+    type: "income",
+    // El correo NO dice quién envió el dinero, solo el canal. Ponerlo entre
+    // paréntesis es más honesto que inventar un remitente.
+    merchant: canal ? `Transferencia recibida (${canal})` : "Transferencia recibida",
+    amount,
+    currency: "DOP",
+    date,
+    // "su cuenta terminada en 0386" es una CUENTA, no una tarjeta. Pasarla a
+    // card_last4 crearía una tarjeta fantasma en /cards y agruparía bajo ella
+    // transferencias que no se hicieron con ninguna tarjeta.
+    card_last4: null,
+    available_balance: null,
+  };
+}
+
 function buildPagoInstante(body: string): ParsedBankEmail | null {
   const beneficiary = extractInline(body, "Beneficiario");
   const amountRaw = extractInline(body, "Monto");
@@ -247,6 +339,9 @@ export function parsePopularEmail(subject: string, rawBody: string): ParsedBankE
   }
   if (s.includes("depósito por atm") || s.includes("deposito por atm")) {
     return buildDeposito(body);
+  }
+  if (s.includes("transferencia recibida")) {
+    return buildTransferenciaRecibida(body);
   }
   if (s.includes("pagos al instante") && s.includes("enviada")) {
     return buildPagoInstante(body);

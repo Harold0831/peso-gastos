@@ -202,3 +202,111 @@ describe("isIgnorablePopularEmail", () => {
     expect(isIgnorablePopularEmail("Notificación de Consumo")).toBe(false);
   });
 });
+
+/**
+ * Formatos vistos en producción el 2026-09-11, sacados de
+ * `GET /api/admin/failed-emails` — los tres fallaban.
+ *
+ * Nombres y últimos 4 dígitos ENMASCARADOS a mano: estos correos son de otra
+ * persona y el repo es público. La estructura, que es lo único que el parser
+ * necesita, se conserva carácter por carácter.
+ */
+
+// Mismo tipo que ya existía, pero el cuerpo llega como TEXTO PLANO con las
+// etiquetas separadas por TABULADORES en una sola línea (antes venía una
+// etiqueta por línea). Ojo al comercio: se parte en dos líneas.
+const CONSUMO_TABS = `\r
+Estimado (a) NOMBRE APELLIDO \r
+\r
+Gracias por utilizar su Tarjeta Debito Digital/QR, terminada en 1111. \r
+\r
+A continuación detalle de la transacción:\r
+\r
+\r
+Monto \tMoneda \tFecha \tComercio \tEstatus \t\r
+RD$643.10\t Peso dominicano\t 04/09/2026 \tSTARBUCKS\r
+CUMAYASA \tAprobada\t\r
+\r
+En caso de requerir mayor información, puede comunicarse con nosotros\r
+llamando al 809-544-5555. \r
+`;
+
+const RETIRO_TABS = `\r
+Estimado (a) NOMBRE APELLIDO \r
+\r
+Gracias por utilizar su Tarjeta Visa Débito Clásica, terminada en 2222. \r
+\r
+A continuación detalle de la transacción:\r
+\r
+\r
+Monto \tMoneda \tFecha \tCajero Automatico\t Estatus \t\r
+RD$200.00 \tPeso dominicano \t05/09/2026 \tBANCO POPULAR\r
+OF. C. NACI \tAprobada\t\r
+`;
+
+// Tipo NUEVO: no estaba en el parser. Llega como HTML.
+const TRANSFERENCIA_RECIBIDA_HTML = `<table><tbody><tr><td><p><b>Estimado&nbsp;APELLIDO NOMBRE&nbsp;</b></p><p>Le informamos los detalles de la transacción de transferencia recibida en su cuenta terminada en 0000:</p></td></tr><tr><td><table class='myTable'><tbody><tr><th>Monto</th>
+<td>Fecha</td>
+<td>Canal</td>
+</tr><tr><th>RD&nbsp;$650.00&nbsp;</th>
+<td>4/9/2026&nbsp;<br></td>
+<td>APP POPULAR&nbsp;<br></td>
+</tr></tbody></table><p>Si necesita más información o no reconoce esta transacción, no dude en contactarnos llamando al 809-544-5555.</p></td></tr></tbody></table>`;
+
+describe("formatos de tabla separados por tabuladores (2026-09)", () => {
+  it("lee un consumo aunque las etiquetas vengan en una sola línea con tabs", () => {
+    const result = parsePopularEmail("Notificación de Consumo", CONSUMO_TABS);
+    expect(result).toEqual({
+      type: "expense",
+      // El comercio venía partido en dos líneas: "STARBUCKS" + "CUMAYASA".
+      // Unirlo es justo lo que distingue leerlo bien de leer "STARBUCKS".
+      merchant: "STARBUCKS CUMAYASA",
+      amount: 643.1,
+      currency: "DOP",
+      date: new Date("2026-09-04T16:00:00.000Z"), // mediodía AST
+      card_last4: "1111",
+      available_balance: null,
+    });
+  });
+
+  it("lee un retiro con el mismo formato", () => {
+    const result = parsePopularEmail("Notificación de Retiro", RETIRO_TABS);
+    expect(result).toMatchObject({
+      type: "expense",
+      merchant: "Retiro cajero BANCO POPULAR OF. C. NACI",
+      amount: 200,
+      currency: "DOP",
+      card_last4: "2222",
+    });
+    expect(result?.date).toEqual(new Date("2026-09-05T16:00:00.000Z"));
+  });
+
+  it("sigue leyendo el formato viejo, de una etiqueta por línea", () => {
+    // El banco manda los dos; soportar el nuevo no puede romper el anterior.
+    expect(parsePopularEmail("Notificación de Consumo", CONSUMO_TEXT)).toMatchObject({
+      merchant: "MAYOL & CO GAS",
+      amount: 1500,
+    });
+  });
+});
+
+describe("transferencia recibida por canal digital", () => {
+  it("es un INGRESO, no un gasto", () => {
+    const result = parsePopularEmail(
+      "Notificación transferencia recibida por canal digital",
+      TRANSFERENCIA_RECIBIDA_HTML,
+    );
+    expect(result).toEqual({
+      type: "income",
+      merchant: "Transferencia recibida (APP POPULAR)",
+      amount: 650,
+      currency: "DOP",
+      date: new Date("2026-09-04T16:00:00.000Z"),
+      // "cuenta terminada en 0000" es una CUENTA, no una tarjeta: si se
+      // guardara en card_last4 aparecería como una tarjeta fantasma en
+      // /cards y agruparía transferencias bajo ella.
+      card_last4: null,
+      available_balance: null,
+    });
+  });
+});
