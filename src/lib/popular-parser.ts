@@ -414,6 +414,17 @@ export function isIgnorablePopularEmail(subject: string, rawBody?: string): bool
   ) {
     return true;
   }
+  // "Notificación Depósito de Nómina" se ignora por un motivo DISTINTO a los
+  // de arriba, y por eso va aparte: sí es un movimiento de dinero —el sueldo
+  // de alguien, probablemente el mayor ingreso de su mes— pero **el correo no
+  // trae el monto**. Dice "ha sido acreditado el pago de su nómina en su
+  // cuenta terminada en 0085" y remite a la app del banco para los detalles.
+  // No se puede importar lo que el correo no dice, y un ingreso sin monto no
+  // existe: se ignora para no reportarlo como parser roto, y quien lo cobra lo
+  // registra a mano. Si el banco empieza a incluir el monto, quitar esto.
+  if (/dep[oó]sito de n[oó]mina/i.test(subject)) {
+    return true;
+  }
   if (!rawBody) return false;
   const body = toPlainText(rawBody);
   return /\bdeclinad[ao]\b|\brechazad[ao]\b/i.test(body);

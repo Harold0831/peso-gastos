@@ -731,6 +731,15 @@ nada (el ciclo completo: `curl` → reproducir en un test → arreglar):
   por ATM). Ambos se despachan con regex en vez de `includes` de la frase larga.
 - **Qik: "Tu tarjeta ha sido bloqueada"** (por CVV/PIN incorrecto) es una alerta
   de seguridad, no un movimiento — el consumo que la provocó ni se cobró.
+- **"Notificación Depósito de Nómina" se ignora por un motivo DISTINTO** al del
+  resto de ignorables, y conviene no confundirlo: sí es un movimiento de dinero
+  —el sueldo de alguien, probablemente su mayor ingreso del mes— pero **el
+  correo no trae el monto**. Dice "ha sido acreditado el pago de su nómina en su
+  cuenta terminada en 0085" y remite a la App Popular para los detalles. No se
+  puede importar lo que el correo no dice: se ignora para no reportarlo como
+  parser roto, y quien lo cobra lo registra a mano. Si el banco empieza a
+  incluir el monto, hay que quitar esa regla. Un test vigila que no se coma el
+  "depósito recibido en sucursal", que empieza igual y sí trae la tabla.
 
 **Y debajo de todo eso había un bug que no era del Popular** (2026-09-11, el
 que de verdad explicaba la mayoría): la prueba de "¿esto es HTML?" era

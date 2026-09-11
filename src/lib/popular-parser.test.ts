@@ -198,6 +198,19 @@ describe("isIgnorablePopularEmail", () => {
     expect(isIgnorablePopularEmail("Notificación de Tarjeta bloqueada por seguridad")).toBe(true);
   });
 
+  it("ignora el depósito de nómina, que NO trae el monto", () => {
+    // Es el único ignorable que sí es un movimiento de dinero: el correo avisa
+    // del sueldo pero manda a la app del banco a ver cuánto fue. Sin monto no
+    // hay transacción que insertar.
+    expect(isIgnorablePopularEmail("Notificación Depósito de Nómina")).toBe(true);
+  });
+
+  it("pero un depósito recibido en sucursal SÍ se parsea", () => {
+    // Los dos asuntos empiezan por "depósito": la regla de la nómina no puede
+    // tragarse el que sí trae Monto/Fecha/Canal.
+    expect(isIgnorablePopularEmail("Notificación de depósito recibido en sucursal")).toBe(false);
+  });
+
   it("ignora la cancelación de una tarjeta", () => {
     // Avisa de que la tarjeta dejó de existir, no de un movimiento de dinero.
     expect(isIgnorablePopularEmail("Cancelacion tarjeta de débito")).toBe(true);
