@@ -868,10 +868,23 @@ AM/PM (AST)` (compras con tarjeta), español con hora
   estaba. `runSyncAll` reparte UN presupuesto entre todos los usuarios y no
   empieza con uno al que no le puede dedicar tiempo. El aviso de corte se
   manda al monitoreo pero NO se cuenta como error de parseo, para que el
-  número que abre la alerta siga siendo el de correos que no se pudieron leer. `fetchQikEmails()` pagina y limita la
-  concurrencia al pedir el detalle de cada correo (Gmail responde 429
-  "too many concurrent requests" si se disparan todos a la vez — solo se
-  nota con ventanas largas, el día a día trae pocos correos).
+  número que abre la alerta siga siendo el de correos que no se pudieron leer.
+  **El descarte de correos ya conocidos va ENTRE las dos fases de Gmail**
+  (`selectIds` en `fetchBankEmails`), no después. Listar ids es 1 petición por
+  cada 100, pero bajar el CUERPO es una petición por correo: descargar los ~100
+  de la ventana para que el sync los descartara a continuación era el grueso
+  del tiempo de cada corrida, y un usuario ya sincronizado pagaba cien
+  peticiones para no hacer nada. Con el presupuesto de tiempo eso se volvió
+  visible como un **estancamiento**: la corrida gastaba los 50s en los primeros
+  usuarios y los últimos no se sincronizaban NUNCA, por muchas veces que se
+  repitiera la llamada — `pending.users` se quedaba clavado en el mismo número.
+  Ojo al mover ese filtro: `unknownMessageIds()` **no** filtra `deleted_at`, por
+  la misma razón que el chequeo original (ver § deleteTransaction), y consulta
+  en lotes de 200 porque los ids viajan en la URL de PostgREST.
+  `fetchBankEmails()` pagina y limita la concurrencia al pedir el detalle de
+  cada correo (Gmail responde 429 "too many concurrent requests" si se disparan
+  todos a la vez — solo se nota con ventanas largas, el día a día trae pocos
+  correos).
 
 Tests: `src/lib/qik-parser.test.ts`, con fixtures HTML tomados de correos
 reales (nombre/cédula ya enmascarados por el propio Qik). **Si Qik agrega

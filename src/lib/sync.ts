@@ -168,6 +168,33 @@ async function notifyBudgetForAutoConfirmed(
 }
 
 /**
+ * De una lista de ids de Gmail, los que este usuario todavía NO tiene
+ * registrados. Se consulta en lotes porque los ids van en la URL de PostgREST
+ * y una ventana larga puede traer varios cientos.
+ *
+ * **Deliberadamente sin filtrar `deleted_at`**: si el usuario eliminó la
+ * transacción (soft delete) el correo sigue existiendo en Gmail, y volver a
+ * insertarlo lo resucitaría — es exactamente el bug de las transacciones que
+ * "reaparecían solas" (ver CLAUDE.md § deleteTransaction).
+ */
+async function unknownMessageIds(userId: string, ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const supabase = getSupabaseAdmin();
+  const known = new Set<string>();
+  const BATCH = 200;
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("gmail_message_id")
+      .eq("user_id", userId)
+      .in("gmail_message_id", ids.slice(i, i + BATCH));
+    if (error) throw new Error(`Error consultando duplicados: ${error.message}`);
+    for (const row of data ?? []) known.add(row.gmail_message_id as string);
+  }
+  return ids.filter((id) => !known.has(id));
+}
+
+/**
  * Pipeline de sincronización de UN usuario:
  *  1. Trae correos recientes de los remitentes de Qik (ver gmail.ts)
  *  2. Descarta los que ya existen para ese usuario (gmail_message_id)
@@ -208,12 +235,17 @@ export async function runSyncForUser(
     return { synced: 0, errors: ["Este usuario no tiene Gmail vinculado"] };
   }
 
-  let emails;
+  let newEmails;
   try {
-    emails = await fetchBankEmails(
+    newEmails = await fetchBankEmails(
       decryptToken(account.refresh_token_enc),
       newerThanDays,
       sendersForBanks(account.enabled_banks),
+      // El descarte de ya-conocidos va ENTRE las dos fases de Gmail (listar
+      // ids / bajar cuerpos), no después: bajar el cuerpo es una petición por
+      // correo, y hacerlo para descartarlo a continuación era el grueso del
+      // tiempo de cada corrida. Ver el doc de `selectIds` en gmail.ts.
+      { selectIds: (ids) => unknownMessageIds(userId, ids) },
     );
   } catch (err) {
     if (err instanceof GmailAuthError) {
@@ -233,24 +265,6 @@ export async function runSyncForUser(
     }
     throw err;
   }
-  if (emails.length === 0) return { synced: 0, errors };
-
-  // Deliberadamente sin filtrar deleted_at: si el usuario eliminó la
-  // transacción (soft delete), el correo sigue existiendo en Gmail y no
-  // debe re-insertarse solo porque ya no aparece en la UI.
-  const { data: existing, error: existingError } = await supabase
-    .from("transactions")
-    .select("gmail_message_id")
-    .eq("user_id", userId)
-    .in(
-      "gmail_message_id",
-      emails.map((e) => e.id),
-    );
-  if (existingError) {
-    throw new Error(`Error consultando duplicados: ${existingError.message}`);
-  }
-  const known = new Set((existing ?? []).map((r) => r.gmail_message_id));
-  const newEmails = emails.filter((e) => !known.has(e.id));
   if (newEmails.length === 0) return { synced: 0, errors };
 
   // Globales (seed) + las propias del usuario, menos las que ocultó, para que

@@ -176,6 +176,24 @@ export async function fetchBankEmails(
   refreshToken: string,
   newerThanDays = 7,
   senders: string[] = BANK_SENDERS,
+  options?: {
+    /**
+     * Filtro entre las DOS fases: recibe todos los ids que encontró la
+     * búsqueda y devuelve solo los que hay que descargar.
+     *
+     * Es el parámetro más importante de esta función. El listado de Gmail
+     * devuelve ids —baratos, 1 petición por cada 100— pero el cuerpo de cada
+     * correo es UNA petición más, y esas son las que cuestan el tiempo. Sin
+     * este filtro se descargaban los ~100 correos de la ventana para que el
+     * sync descartara después los que ya estaban en la base: un usuario ya
+     * sincronizado pagaba cien peticiones por corrida para no hacer nada.
+     *
+     * Con un backfill de 30 días eso hacía que el presupuesto de tiempo se
+     * gastara entero en los primeros usuarios y los últimos no se
+     * sincronizaran NUNCA, por muchas veces que se repitiera la llamada.
+     */
+    selectIds?: (ids: string[]) => Promise<string[]> | string[];
+  },
 ): Promise<GmailMessage[]> {
   const accessToken = await getAccessToken(refreshToken);
   const fromClause = senders.map((s) => `from:${s}`).join(" OR ");
@@ -192,7 +210,10 @@ export async function fetchBankEmails(
     pageToken = page.nextPageToken;
   } while (pageToken);
 
-  return mapWithConcurrency(ids, 10, async (id) => {
+  const wanted = options?.selectIds ? await options.selectIds(ids) : ids;
+  if (wanted.length === 0) return [];
+
+  return mapWithConcurrency(wanted, 10, async (id) => {
     const msg = await gmailFetch<{
       id: string;
       snippet: string;
