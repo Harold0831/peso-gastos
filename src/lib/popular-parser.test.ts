@@ -204,6 +204,156 @@ describe("isIgnorablePopularEmail", () => {
 });
 
 /**
+ * Segunda tanda de formatos reales, del 2026-09-11 por la tarde: después del
+ * primer arreglo seguían fallando SEIS cosas distintas, todas confirmadas
+ * contra `GET /api/admin/failed-emails`. Cada `describe` de abajo es una.
+ *
+ * Nombres y últimos 4 dígitos ENMASCARADOS a mano: los correos son de otras
+ * personas y el repo es público. La estructura —lo único que el parser
+ * necesita— se conserva carácter por carácter, tabuladores incluidos.
+ */
+
+// El salto de línea del envoltorio se comió el TAB que separaba Comercio de
+// Estatus: "KFC SAN PEDRO\nAprobada" en vez de "KFC SAN PEDRO\tAprobada".
+const CONSUMO_TAB_COMIDO = `\r
+Estimado (a) NOMBRE APELLIDO \r
+\r
+Gracias por utilizar su Tarjeta Debito Digital/QR, terminada en 3333. \r
+\r
+A continuación detalle de la transacción:\r
+\r
+\r
+Monto \tMoneda \tFecha \tComercio \tEstatus \t\r
+RD$230.00\t Peso dominicano\t 03/09/2026 \tKFC SAN PEDRO\r
+Aprobada\t\r
+\r
+En caso de requerir mayor información, puede comunicarse con nosotros\r
+llamando al 809-544-5555. \r
+`;
+
+// Consumo en DÓLARES: el monto llega como "US$11.99" y la columna Moneda dice
+// "Dólar estadounidense".
+const CONSUMO_USD = `\r
+Estimado (a) NOMBRE APELLIDO \r
+\r
+Gracias por utilizar su Tarjeta Debito Digital/QR, terminada en 3333. \r
+\r
+A continuación detalle de la transacción:\r
+\r
+\r
+Monto \tMoneda \tFecha \tComercio \tEstatus \t\r
+US$11.99\t Dólar estadounidense\t 01/09/2026 \tSpotify\r
+P465A50D35 \tAprobada\t\r
+`;
+
+// Transacción DECLINADA por fondos insuficientes: otra plantilla (sin columna
+// Moneda) y con el mismo asunto que una aprobada.
+const CONSUMO_DECLINADO = `\r
+Estimado (a) NOMBRE APELLIDO \r
+\r
+Gracias por utilizar su Visa Débito Clásica, terminada en 3333.\r
+\r
+Le informamos que su transacción ha sido declinada por fondos\r
+insuficientes.\r
+\r
+A continuación el detalle de su transacción:\r
+\r
+Monto\tFecha\t Comercio\t Estatus\t\r
+RD$18,800.00\t07/09/2026\tBANCO POPULAR OFICINA DR.\r
+Declinada\t\r
+`;
+
+// Asunto abreviado del mismo tipo que ya se soportaba: el banco lo manda como
+// "transf recibida via app e IB" según el canal. Ojo al monto: "RD" sin "$".
+const TRANSF_RECIBIDA_ABREVIADA = `<p>Le informamos los detalles de la transacción de transferencia recibida en su cuenta terminada en&nbsp;0000&nbsp;:</p><table class='myTable'><tbody><tr><th>Monto</th> <td>Fecha</td> <td>Canal</td></tr><tr><th>RD&nbsp;&nbsp;&nbsp;2,500.00&nbsp;</th> <td>14/8/2026&nbsp;&nbsp;<br></td>  <td>APP POPULAR&nbsp;&nbsp; &nbsp;</td>
+</tr></tbody></table>`;
+
+// Depósito hecho en sucursal: misma tabla que el depósito por ATM, asunto
+// distinto (y por eso no se dispatchaba).
+const DEPOSITO_SUCURSAL = `<p>Le informamos los detalles de la transacción de depósito efectuado en su cuenta terminada en 0000&nbsp;:</p><table class='myTable'><tbody><tr><th>Monto</th><td>Fecha</td><td>Canal</td></tr><tr><th>RD&nbsp;$1,400.00&nbsp;</th><td>2/9/2026&nbsp;</td><td>OFICINA ALMACENES IBERIA, SPM&nbsp;</td></tr></tbody></table>`;
+
+describe("el salto de línea puede comerse un tabulador (2026-09-11)", () => {
+  it("lee el consumo aunque el Estatus quede pegado al comercio", () => {
+    expect(parsePopularEmail("Notificación de Consumo", CONSUMO_TAB_COMIDO)).toEqual({
+      type: "expense",
+      merchant: "KFC SAN PEDRO",
+      amount: 230,
+      currency: "DOP",
+      date: new Date("2026-09-03T16:00:00.000Z"),
+      card_last4: "3333",
+      available_balance: null,
+    });
+  });
+
+  it("y sigue uniendo un comercio partido en dos líneas", () => {
+    // Los dos casos son el MISMO carácter (\n) significando cosas distintas.
+    // Aquí el salto está dentro del valor y el tab de Estatus sí llegó.
+    expect(parsePopularEmail("Notificación de Consumo", CONSUMO_USD)).toMatchObject({
+      merchant: "Spotify P465A50D35",
+    });
+  });
+});
+
+describe("consumos en dólares", () => {
+  it("lee el monto con prefijo US$ y lo marca como USD", () => {
+    // Con la expresión anterior, que exigía "RD", el monto salía null y la
+    // transacción se perdía ENTERA aunque el resto de la tabla estuviera bien.
+    expect(parsePopularEmail("Notificación de Consumo", CONSUMO_USD)).toMatchObject({
+      amount: 11.99,
+      currency: "USD",
+    });
+  });
+});
+
+describe("transacciones declinadas", () => {
+  it("no se parsean", () => {
+    expect(parsePopularEmail("Notificación de Consumo", CONSUMO_DECLINADO)).toBeNull();
+  });
+
+  it("y se reconocen como ruido, no como parser roto", () => {
+    // Sin esto, cada intento fallido de pagar disparaba una alerta de "banco
+    // cambió el formato" y guardaba una muestra del correo. El dinero nunca se
+    // movió: no hay nada que registrar ni nada que arreglar.
+    expect(isIgnorablePopularEmail("Notificación de Consumo", CONSUMO_DECLINADO)).toBe(true);
+  });
+
+  it("pero un consumo aprobado NO es ignorable", () => {
+    // La red que impide que "ignorar declinadas" se coma transacciones reales.
+    expect(isIgnorablePopularEmail("Notificación de Consumo", CONSUMO_TAB_COMIDO)).toBe(false);
+  });
+});
+
+describe("asuntos que el dispatcher no reconocía", () => {
+  it('"transf recibida via app e IB" es el mismo ingreso, abreviado', () => {
+    expect(
+      parsePopularEmail("Notificación transf recibida via app e IB", TRANSF_RECIBIDA_ABREVIADA),
+    ).toEqual({
+      type: "income",
+      merchant: "Transferencia recibida (APP POPULAR)",
+      amount: 2500,
+      currency: "DOP",
+      date: new Date("2026-08-14T16:00:00.000Z"),
+      card_last4: null,
+      available_balance: null,
+    });
+  });
+
+  it("un depósito recibido en sucursal es un ingreso", () => {
+    expect(
+      parsePopularEmail("Notificación de depósito recibido en sucursal", DEPOSITO_SUCURSAL),
+    ).toEqual({
+      type: "income",
+      merchant: "Depósito OFICINA ALMACENES IBERIA, SPM",
+      amount: 1400,
+      currency: "DOP",
+      date: new Date("2026-09-02T16:00:00.000Z"),
+      card_last4: null,
+      available_balance: null,
+    });
+  });
+});
+
+/**
  * Formatos vistos en producción el 2026-09-11, sacados de
  * `GET /api/admin/failed-emails` — los tres fallaban.
  *

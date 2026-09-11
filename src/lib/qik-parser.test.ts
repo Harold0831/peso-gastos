@@ -259,6 +259,13 @@ describe("isIgnorableQikEmail", () => {
     expect(isIgnorableQikEmail("Cardholder Services Alert")).toBe(true);
   });
 
+  it("ignora el bloqueo de la tarjeta por CVV/PIN incorrecto", () => {
+    // Visto en producción el 2026-09-11: es una alerta de seguridad y el
+    // consumo que la provocó nunca se cobró, pero se reportaba como un parser
+    // roto y guardaba una muestra del correo.
+    expect(isIgnorableQikEmail("Tu tarjeta Qik ha sido bloqueada")).toBe(true);
+  });
+
   it("ignora una compra declinada aunque el asunto no lo diga", () => {
     expect(
       isIgnorableQikEmail(

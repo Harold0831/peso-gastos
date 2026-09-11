@@ -16,7 +16,14 @@ import { htmlToText } from "./qik-parser";
  *   5. "Notificaciones Pagos al Instante transferencia enviada" → gasto
  *   6. "Notificacion Reverso a cuenta por sobregiro" → ingreso
  *   7. "Notificación transferencia recibida por canal digital" → ingreso
- *      (confirmado 2026-09-11)
+ *      (confirmado 2026-09-11). El banco abrevia el asunto según el canal:
+ *      "Notificación transf recibida via app e IB" es el mismo correo.
+ *   8. "Notificación de depósito recibido en sucursal" → ingreso; misma tabla
+ *      que el depósito por ATM, solo cambia el asunto y el Canal.
+ *
+ * Las transacciones DECLINADAS usan el asunto de una aprobada pero otra
+ * plantilla (sin columna Moneda): no se parsean y se reconocen como ruido en
+ * isIgnorablePopularEmail — el dinero nunca se movió.
  *
  * A diferencia de Qik (label: valor por línea), el Popular usa tablas
  * COLUMNARES: primero todas las etiquetas (Monto/Moneda/Fecha/Comercio/
@@ -33,11 +40,22 @@ import { htmlToText } from "./qik-parser";
  * Montos: "RD$1,500.00", "RD $4,000.00", "RD 12,400.00", "RD$ 24,988.00".
  */
 
-/** "RD$1,500.00" / "RD 12,400.00" / "RD $4,000.00" → número. */
+/**
+ * "RD$1,500.00" / "RD 12,400.00" / "RD $4,000.00" / "US$11.99" → número.
+ *
+ * El prefijo `US` no es un extra teórico: un consumo en dólares llega como
+ * `US$11.99` (con "Dólar estadounidense" en la columna Moneda), y mientras la
+ * expresión exigía `RD` esos correos se caían enteros — el monto volvía null y
+ * la transacción se perdía aunque el resto de la tabla estuviera perfecta.
+ *
+ * Se exige alguna marca de moneda (RD, US o `$`) a propósito: esto también se
+ * usa sobre texto en prosa (el reverso por sobregiro), donde aceptar cualquier
+ * número suelto capturaría un número de cuenta o una fecha.
+ */
 export function parsePopularAmount(raw: string): number | null {
-  const match = raw.match(/RD\s*\$?\s*([\d,]+(?:\.\d{1,2})?)/i);
+  const match = raw.match(/(?:RD|US)\s*\$?\s*([\d,]+(?:\.\d{1,2})?)|\$\s*([\d,]+(?:\.\d{1,2})?)/i);
   if (!match) return null;
-  const value = Number(match[1].replace(/,/g, ""));
+  const value = Number((match[1] ?? match[2]).replace(/,/g, ""));
   return Number.isFinite(value) ? value : null;
 }
 
@@ -63,9 +81,17 @@ export function parsePopularDate(raw: string): Date | null {
   return null;
 }
 
-/** "Peso dominicano" → DOP, "Dólar…" → USD. Default DOP. */
-function parseCurrency(raw: string | null): Currency {
-  if (raw && /d[oó]lar|usd/i.test(raw)) return "USD";
+/**
+ * "Peso dominicano" → DOP, "Dólar…" → USD. Default DOP.
+ *
+ * El monto entra como segunda señal porque la lleva encima (`US$11.99`) y
+ * porque no todas las plantillas traen columna Moneda: si alguna vez falta,
+ * es preferible leer la moneda del propio monto a estampar DOP en un cargo en
+ * dólares, que saldría con el símbolo equivocado Y convertido al revés.
+ */
+function parseCurrency(moneda: string | null, monto?: string | null): Currency {
+  if (moneda && /d[oó]lar|usd/i.test(moneda)) return "USD";
+  if (monto && /\bUS\s*\$?/i.test(monto)) return "USD";
   return "DOP";
 }
 
@@ -113,22 +139,38 @@ function zipOnePerLine(lines: string[], labels: string[]): Map<string, string> |
  * pone cada celda en su línea). El parser solo conocía la primera forma, así
  * que consumos y retiros dejaron de leerse en silencio.
  *
- * La trampa está en los valores: **un valor puede partirse en varias líneas**
- * ("STARBUCKS\nCUMAYASA"). Por eso no se lee una línea sino que se van
- * uniendo líneas hasta juntar tantos campos como etiquetas — quedarse en la
- * primera daría "STARBUCKS" y perdería media mitad del nombre del comercio.
+ * La trampa está en los valores, y son DOS trampas distintas que el mismo
+ * salto de línea provoca — el correo viene duro-envuelto a ~72 caracteres y
+ * ese envoltorio cae donde le toca, sin respetar la tabla:
+ *
+ *   1. Un valor se parte en varias líneas: `"2B FARMA LR\nPEDRO A LLUBE"`.
+ *      Leer solo la primera línea daría "2B FARMA LR" y perdería media mitad
+ *      del comercio — que además rompería la auto-confirmación por comercio.
+ *   2. **El salto se come el TABULADOR que separaba dos columnas**:
+ *      `"KFC SAN PEDRO\nAprobada"` en vez de `"KFC SAN PEDRO\tAprobada"`.
+ *      Esto es lo que seguía fallando después del arreglo del 2026-09-11: se
+ *      unían las líneas con un espacio, así que las columnas nunca llegaban a
+ *      cinco y el correo se descartaba entero.
+ *
+ * Por eso se une conservando el `\n` y, si faltan columnas, se reparan los
+ * separadores que el envoltorio se comió (`repairWrappedSeparators`). La
+ * ambigüedad de fondo —un `\n` puede ser cualquiera de las dos cosas— no se
+ * puede resolver mirando el texto, así que la red es el validador de cada
+ * builder: el Estatus tiene que ser exactamente "Aprobada" y el monto y la
+ * fecha tienen que parsear. Un corte equivocado falla ruidosamente en vez de
+ * insertar una transacción a medias.
  */
 function zipTabSeparated(lines: string[], labels: string[]): Map<string, string> | null {
-  const split = (line: string) => line.split("\t").map((c) => c.trim());
   /** Quita las columnas vacías del final que deja el tab de cierre. */
   const trimTrailing = (cells: string[]) => {
     const out = [...cells];
-    while (out.length > 0 && out[out.length - 1] === "") out.pop();
+    while (out.length > 0 && out[out.length - 1].trim() === "") out.pop();
     return out;
   };
+  const cellsOf = (text: string) => trimTrailing(text.split("\t"));
 
   for (let i = 0; i < lines.length; i++) {
-    const header = trimTrailing(split(lines[i]));
+    const header = cellsOf(lines[i]).map((c) => c.trim());
     if (header.length !== labels.length) continue;
     const isHeader = labels.every((label, k) => header[k]?.toLowerCase() === label.toLowerCase());
     if (!isHeader) continue;
@@ -137,16 +179,48 @@ function zipTabSeparated(lines: string[], labels: string[]): Map<string, string>
     // del correo si la tabla viniera incompleta.
     let joined = "";
     for (let j = i + 1; j < lines.length && j <= i + labels.length; j++) {
-      joined = joined ? `${joined} ${lines[j]}` : lines[j];
-      const values = trimTrailing(split(joined));
-      if (values.length === labels.length) {
-        return new Map(labels.map((label, k) => [label, values[k]]));
+      joined = joined ? `${joined}\n${lines[j]}` : lines[j];
+      const cells = cellsOf(joined);
+      if (cells.length > labels.length) return null; // más columnas que etiquetas: no es la tabla
+      const values = repairWrappedSeparators(cells, labels.length);
+      if (values) {
+        // Los `\n` que quedan dentro de una celda SÍ eran parte del valor.
+        return new Map(labels.map((label, k) => [label, values[k].replace(/\s+/g, " ").trim()]));
       }
-      if (values.length > labels.length) return null; // más columnas que etiquetas: no es la tabla
     }
     return null;
   }
   return null;
+}
+
+/**
+ * Recupera las columnas que el envoltorio del correo fusionó al comerse un
+ * tabulador: parte por el ÚLTIMO salto de línea de las celdas más a la
+ * derecha hasta llegar al número de columnas esperado.
+ *
+ * Se empieza por la derecha porque la columna que se fusiona es la que sigue
+ * al valor largo (el comercio), y por el ÚLTIMO salto porque los saltos
+ * anteriores de esa misma celda son el valor partiéndose en varias líneas.
+ * Devuelve null si no se puede llegar al número de columnas — el correo no
+ * tenía esta tabla y hay que dejarlo pasar en vez de inventarse una lectura.
+ */
+function repairWrappedSeparators(cells: string[], want: number): string[] | null {
+  if (cells.length === want) return cells;
+  if (cells.length > want) return null;
+
+  const out = [...cells];
+  for (let i = out.length - 1; i >= 0 && out.length < want; i--) {
+    while (out.length < want && out[i].includes("\n")) {
+      const at = out[i].lastIndexOf("\n");
+      const head = out[i].slice(0, at);
+      const tail = out[i].slice(at + 1);
+      // Un salto al principio o al final no separa nada: partir ahí solo
+      // fabricaría una columna vacía.
+      if (!head.trim() || !tail.trim()) break;
+      out.splice(i, 1, head, tail);
+    }
+  }
+  return out.length === want ? out : null;
 }
 
 /** Campo inline "Label: valor" en su propia línea (pagos al instante). */
@@ -171,7 +245,7 @@ function buildConsumo(body: string): ParsedBankEmail | null {
     type: "expense",
     merchant,
     amount,
-    currency: parseCurrency(cols.get("Moneda") ?? null),
+    currency: parseCurrency(cols.get("Moneda") ?? null, cols.get("Monto")),
     date,
     card_last4: extractCardLast4(body),
     available_balance: null,
@@ -192,7 +266,7 @@ function buildRetiro(body: string): ParsedBankEmail | null {
     type: "expense",
     merchant: atm ? `Retiro cajero ${atm}` : "Retiro en cajero",
     amount,
-    currency: parseCurrency(cols.get("Moneda") ?? null),
+    currency: parseCurrency(cols.get("Moneda") ?? null, cols.get("Monto")),
     date,
     card_last4: extractCardLast4(body),
     available_balance: null,
@@ -319,9 +393,21 @@ function buildReversoSobregiro(body: string): ParsedBankEmail | null {
   };
 }
 
-/** Correos del Popular que no representan un movimiento de dinero. */
-export function isIgnorablePopularEmail(subject: string): boolean {
-  return /actualizaci[oó]n de l[ií]mite|tarjeta bloqueada/i.test(subject);
+/**
+ * Correos del Popular que no representan un movimiento de dinero.
+ *
+ * Necesita el CUERPO, no solo el asunto, por las transacciones DECLINADAS:
+ * llegan con el mismo asunto que una aprobada ("Notificación de Consumo") pero
+ * con otra plantilla —sin columna Moneda y con "Declinada" en Estatus— así que
+ * el parser no las puede leer y, sin esto, cada intento fallido de pagar se
+ * reportaba como un parser roto y se guardaba una muestra del correo. No es un
+ * fallo: el dinero nunca se movió y no hay nada que registrar.
+ */
+export function isIgnorablePopularEmail(subject: string, rawBody?: string): boolean {
+  if (/actualizaci[oó]n de l[ií]mite|tarjeta bloqueada/i.test(subject)) return true;
+  if (!rawBody) return false;
+  const body = /<[a-z][\s\S]*>/i.test(rawBody) ? htmlToText(rawBody) : rawBody;
+  return /\bdeclinad[ao]\b|\brechazad[ao]\b/i.test(body);
 }
 
 export function parsePopularEmail(subject: string, rawBody: string): ParsedBankEmail | null {
@@ -337,10 +423,14 @@ export function parsePopularEmail(subject: string, rawBody: string): ParsedBankE
   if (s.includes("notificación de retiro") || s.includes("notificacion de retiro")) {
     return buildRetiro(body);
   }
-  if (s.includes("depósito por atm") || s.includes("deposito por atm")) {
+  // "Depósito por ATM" y "Notificación de depósito recibido en sucursal"
+  // comparten tabla (Monto/Fecha/Canal) y el Canal ya dice cuál fue.
+  if (/dep[oó]sito (por atm|recibido)/i.test(s)) {
     return buildDeposito(body);
   }
-  if (s.includes("transferencia recibida")) {
+  // El banco abrevia el asunto según el canal: "Notificación transferencia
+  // recibida por canal digital" y "Notificación transf recibida via app e IB".
+  if (/transf(?:erencia)? recibida/i.test(s)) {
     return buildTransferenciaRecibida(body);
   }
   if (s.includes("pagos al instante") && s.includes("enviada")) {

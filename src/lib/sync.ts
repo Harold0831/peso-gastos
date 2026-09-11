@@ -32,9 +32,40 @@ import type { Currency } from "./types";
  */
 const AI_PARSE_LIMIT = 8;
 
+/**
+ * Cuánto puede durar una corrida antes de parar sola, en milisegundos.
+ *
+ * Vercel corta la función a los 60s (`maxDuration`) con un
+ * FUNCTION_INVOCATION_TIMEOUT: una respuesta de error, sin JSON, sin decir
+ * cuánto alcanzó a hacer. Eso pasó de verdad con `GET /api/sync?days=30` —
+ * y también con `days=10`, que es lo que descarta "ventana demasiado grande"
+ * como explicación: el costo NO está en buscar los correos sino en procesar
+ * cada uno (una llamada a Gemini de uno o dos segundos por correo nuevo), así
+ * que basta con que un usuario tenga unas decenas de correos pendientes para
+ * reventar el tope, da igual la ventana.
+ *
+ * Parar antes del corte no pierde nada porque el sync es IDEMPOTENTE: lo que
+ * quedó sin procesar sigue en Gmail, `gmail_message_id` es UNIQUE y el
+ * chequeo de monto+fecha+tipo ya evita duplicados cross-canal. Repetir la
+ * llamada avanza desde donde se quedó, en vez de fallar siempre en el mismo
+ * punto y no terminar nunca.
+ *
+ * 50s deja margen para cerrar: el aviso de push, el reporte al webhook de
+ * monitoreo y serializar la respuesta también tardan.
+ */
+const SYNC_TIME_BUDGET_MS = 50_000;
+
+/** Marca de los avisos de corte por tiempo, para no contarlos como errores
+ *  de parseo en el reporte al monitoreo. */
+const TIMEOUT_NOTICE = "Se acabó el tiempo de la corrida";
+
 export interface SyncResult {
   synced: number;
   errors: string[];
+  /** true si la corrida paró por tiempo. Volver a llamar continúa. */
+  timedOut?: boolean;
+  /** Correos (y usuarios, en runSyncAll) que quedaron sin procesar. */
+  pending?: { emails: number; users: number };
 }
 
 interface GmailAccountRow {
@@ -157,10 +188,15 @@ export async function runSyncForUser(
     /** Push "N por confirmar" al terminar. true en los syncs automáticos
      *  (webhook/cron); false en el manual — el usuario ya está mirando. */
     notify?: boolean;
+    /** Instante (epoch ms) a partir del cual hay que parar. Ver
+     *  SYNC_TIME_BUDGET_MS: sin esto la función se corta sola a los 60s. */
+    deadline?: number;
   },
 ): Promise<SyncResult> {
   const supabase = getSupabaseAdmin();
   const errors: string[] = [];
+  const deadline = options?.deadline ?? Date.now() + SYNC_TIME_BUDGET_MS;
+  const outOfTime = () => Date.now() >= deadline;
 
   const { data: account, error: accountError } = await supabase
     .from("gmail_accounts")
@@ -246,7 +282,19 @@ export async function runSyncForUser(
   const described = new Set<string>();
   /** Llamadas a Gemini gastadas en leer correos rotos en esta corrida. */
   let aiAttempts = 0;
-  for (const email of newEmails) {
+  /** Correos que quedaron sin mirar por falta de tiempo. */
+  let leftOver = 0;
+  for (const [index, email] of newEmails.entries()) {
+    // Antes de empezar CON ESTE correo, no a mitad: procesar uno cuesta una
+    // consulta de duplicados, una llamada a Gemini y un insert, y quedarse sin
+    // tiempo entre medio no rompe nada pero desperdicia el trabajo hecho.
+    if (outOfTime()) {
+      leftOver = newEmails.length - index;
+      errors.push(
+        `${TIMEOUT_NOTICE}: quedan ${leftOver} correo(s) sin procesar. Vuelve a sincronizar para continuar.`,
+      );
+      break;
+    }
     /** true si esta transacción la leyó la IA y no un parser de regex. Decide
      *  dos cosas más abajo: `source` y que NO pueda auto-confirmarse. */
     let readByAi = false;
@@ -453,7 +501,9 @@ export async function runSyncForUser(
     await notifyBudgetForAutoConfirmed(userId, await getHome(), autoExpenseByCategory);
   }
 
-  return { synced, errors };
+  return leftOver > 0
+    ? { synced, errors, timedOut: true, pending: { emails: leftOver, users: 0 } }
+    : { synced, errors };
 }
 
 /** Sincroniza al usuario dueño de una dirección de Gmail (webhook push). */
@@ -490,15 +540,33 @@ export async function runSyncForGmailAddress(email: string): Promise<SyncResult>
  */
 async function reportSyncErrors(context: string, result: SyncResult): Promise<void> {
   if (result.errors.length === 0) return;
-  await reportIssue({
-    context,
-    message: `${result.errors.length} correo(s) no se pudieron procesar (${result.synced} sincronizados).`,
-    details: result.errors,
-  });
+
+  // Quedarse sin tiempo NO es un correo que no se pudo leer, y contarlo como
+  // tal falsearía el número que abre el aviso. Se separa, pero se sigue
+  // avisando: un sync que se corta SIEMPRE deja de importar transacciones en
+  // silencio, que es exactamente el fallo mudo que este monitoreo existe para
+  // que no vuelva a pasar.
+  const parseErrors = result.errors.filter((e) => !e.includes(TIMEOUT_NOTICE));
+  const message =
+    parseErrors.length > 0
+      ? `${parseErrors.length} correo(s) no se pudieron procesar (${result.synced} sincronizados).`
+      : `La corrida se quedó sin tiempo con ${result.synced} sincronizados; quedan ${result.pending?.emails ?? 0} correo(s) y ${result.pending?.users ?? 0} usuario(s).`;
+
+  await reportIssue({ context, message, details: result.errors });
 }
 
-/** Sincroniza todos los usuarios con Gmail vinculado (GET /api/sync). */
+/**
+ * Sincroniza todos los usuarios con Gmail vinculado (GET /api/sync).
+ *
+ * Los usuarios van EN SERIE y comparten un único presupuesto de tiempo
+ * (ver SYNC_TIME_BUDGET_MS). Es lo que evita el FUNCTION_INVOCATION_TIMEOUT:
+ * antes se recorrían todos sin mirar el reloj, así que un backfill con varios
+ * usuarios y decenas de correos cada uno reventaba el tope de 60s y la llamada
+ * devolvía un error en vez de decir qué se sincronizó. Ahora la corrida para
+ * limpio, dice cuánto queda, y repetir la llamada continúa desde ahí.
+ */
 export async function runSyncAll(newerThanDays?: number): Promise<SyncResult> {
+  const deadline = Date.now() + SYNC_TIME_BUDGET_MS;
   const { data: accounts, error } = await getSupabaseAdmin()
     .from("gmail_accounts")
     .select("user_id, email, refresh_token_enc, sync_enabled, enabled_banks")
@@ -506,17 +574,41 @@ export async function runSyncAll(newerThanDays?: number): Promise<SyncResult> {
   if (error) throw new Error(`Error listando cuentas de Gmail: ${error.message}`);
 
   let synced = 0;
+  let pendingEmails = 0;
+  let pendingUsers = 0;
+  let timedOut = false;
   const errors: string[] = [];
-  for (const account of (accounts ?? []) as GmailAccountRow[]) {
+  const list = (accounts ?? []) as GmailAccountRow[];
+  for (const [index, account] of list.entries()) {
+    if (Date.now() >= deadline) {
+      // No se empieza con un usuario al que no se le puede dedicar tiempo:
+      // arrancar su sync solo para cortarlo gasta la consulta a Gmail sin
+      // procesar nada.
+      timedOut = true;
+      pendingUsers = list.length - index;
+      errors.push(
+        `${TIMEOUT_NOTICE}: quedan ${pendingUsers} usuario(s) sin sincronizar. Vuelve a llamar para continuar.`,
+      );
+      break;
+    }
     try {
-      const result = await runSyncForUser(account.user_id, newerThanDays, { notify: true });
+      const result = await runSyncForUser(account.user_id, newerThanDays, {
+        notify: true,
+        deadline,
+      });
       synced += result.synced;
       errors.push(...result.errors.map((e) => `[${account.email}] ${e}`));
+      if (result.timedOut) {
+        timedOut = true;
+        pendingEmails += result.pending?.emails ?? 0;
+      }
     } catch (err) {
       errors.push(`[${account.email}] ${err instanceof Error ? err.message : "Error"}`);
     }
   }
-  const result = { synced, errors };
+  const result: SyncResult = timedOut
+    ? { synced, errors, timedOut, pending: { emails: pendingEmails, users: pendingUsers } }
+    : { synced, errors };
   await reportSyncErrors("sync de todos los usuarios", result);
   return result;
 }

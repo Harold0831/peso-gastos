@@ -682,6 +682,42 @@ de `/api/admin/failed-emails`, ver § Red para cuando un parser se rompe):
   que el nombre y los últimos 4 dígitos van ENMASCARADOS a mano en el test —
   los de Qik venían ya enmascarados por el propio banco, estos no.
 
+**Segunda tanda, la misma tarde**: con el arreglo desplegado la tabla de
+muestras volvió a llenarse, así que el primer pase solo había tapado una parte.
+Seis causas distintas, todas confirmadas contra el correo real antes de tocar
+nada (el ciclo completo: `curl` → reproducir en un test → arreglar):
+
+- **El salto de línea se come el TABULADOR.** El correo viene duro-envuelto a
+  ~72 caracteres y ese envoltorio no respeta la tabla: además de partir un valor
+  en dos líneas (que ya se contemplaba), a veces cae JUSTO en el separador y
+  llega `"KFC SAN PEDRO\nAprobada"` donde debía haber un tab. Como las líneas se
+  unían con un espacio, las columnas nunca llegaban a cinco y el correo se
+  descartaba entero. Ahora se une conservando el `\n` y
+  `repairWrappedSeparators()` parte por el último salto de las celdas de la
+  derecha hasta cuadrar el número de columnas. **La ambigüedad no se puede
+  resolver mirando el texto** —el mismo carácter significa las dos cosas— así
+  que la red es el validador de cada builder: Estatus debe ser exactamente
+  "Aprobada" y el monto y la fecha deben parsear, de modo que un corte
+  equivocado falla ruidosamente en vez de insertar media transacción.
+- **`parsePopularAmount` exigía `RD`**, y un consumo en dólares llega como
+  `US$11.99`: el monto volvía null y se perdía la transacción ENTERA aunque el
+  resto de la tabla estuviera perfecta. Sigue exigiendo una marca de moneda
+  (`RD`, `US` o `$`) porque también se usa sobre prosa, donde cualquier número
+  suelto sería un número de cuenta.
+- **Las transacciones DECLINADAS** usan el asunto de una aprobada pero otra
+  plantilla (sin columna Moneda), así que no se parsean — y se reportaban como
+  "el banco cambió el formato", guardando una muestra por cada intento fallido
+  de pagar. `isIgnorablePopularEmail` ahora recibe el CUERPO y las reconoce como
+  ruido: el dinero nunca se movió. Un test comprueba lo contrario (que un
+  consumo aprobado NO es ignorable), que es lo que evita que esta regla se coma
+  transacciones reales.
+- **Dos asuntos que el dispatcher no conocía**: "Notificación transf recibida
+  via app e IB" (el banco abrevia según el canal — es el mismo ingreso) y
+  "Notificación de depósito recibido en sucursal" (misma tabla que el depósito
+  por ATM). Ambos se despachan con regex en vez de `includes` de la frase larga.
+- **Qik: "Tu tarjeta ha sido bloqueada"** (por CVV/PIN incorrecto) es una alerta
+  de seguridad, no un movimiento — el consumo que la provocó ni se cobró.
+
 ### Qik
 
 Qik notifica transacciones desde **dos remitentes distintos**:
@@ -780,7 +816,20 @@ AM/PM (AST)` (compras con tarjeta), español con hora
 - **Backfill puntual**: `GET /api/sync?days=N` corre el sync con una
   ventana más amplia que el default de 7 días — útil una sola vez tras
   arreglar un bug de parseo o agregar un remitente, para recuperar el
-  historial que se perdió. `fetchQikEmails()` pagina y limita la
+  historial que se perdió. **El sync se corta solo antes del tope de la
+  función** (`SYNC_TIME_BUDGET_MS` = 50s, contra los 60s de `maxDuration`) y
+  devuelve `timedOut: true` con cuántos correos y usuarios quedan: repetir la
+  llamada continúa desde donde se quedó. Sin ese freno, un backfill grande se
+  pasaba de los 60s y Vercel respondía `FUNCTION_INVOCATION_TIMEOUT` —sin JSON
+  y sin decir qué alcanzó a hacer— fallando SIEMPRE en el mismo punto, así que
+  no había forma de terminarlo. El costo no está en la ventana sino en procesar
+  cada correo (una llamada a Gemini por correo nuevo), que es por qué bajar a
+  `days=10` tampoco lo arreglaba. Parar a mitad es seguro porque el sync es
+  idempotente: `gmail_message_id` es UNIQUE y el chequeo de monto+fecha+tipo ya
+  estaba. `runSyncAll` reparte UN presupuesto entre todos los usuarios y no
+  empieza con uno al que no le puede dedicar tiempo. El aviso de corte se
+  manda al monitoreo pero NO se cuenta como error de parseo, para que el
+  número que abre la alerta siga siendo el de correos que no se pudieron leer. `fetchQikEmails()` pagina y limita la
   concurrencia al pedir el detalle de cada correo (Gmail responde 429
   "too many concurrent requests" si se disparan todos a la vez — solo se
   nota con ventanas largas, el día a día trae pocos correos).

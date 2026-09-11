@@ -42,7 +42,7 @@ const BANKS: BankDefinition[] = [
     name: "Banco Popular",
     senders: ["notificaciones@popularenlinea.com"],
     parse: (subject, body) => parsePopularEmail(subject, body),
-    isIgnorable: (subject) => isIgnorablePopularEmail(subject),
+    isIgnorable: (subject, body) => isIgnorablePopularEmail(subject, body),
   },
   {
     id: "caribe",

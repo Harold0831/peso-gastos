@@ -184,7 +184,9 @@ function extractLast4(value: string | null): string | null {
  */
 export function isIgnorableQikEmail(subject: string, rawBody?: string): boolean {
   if (
-    /c[oó]digo cash (para|se ha)|estado de cuenta|fecha de pago se acerca|recuerda realizar tu pago|contrase[ñn]a de uso [uú]nico|cardholder services alert/i.test(
+    // "ha sido bloqueada" (por CVV/PIN incorrecto) es una alerta de seguridad,
+    // no un movimiento de dinero: la transacción que la provocó ni se cobró.
+    /c[oó]digo cash (para|se ha)|estado de cuenta|fecha de pago se acerca|recuerda realizar tu pago|contrase[ñn]a de uso [uú]nico|cardholder services alert|ha sido bloqueada/i.test(
       subject,
     )
   ) {

@@ -12,9 +12,15 @@ export const maxDuration = 60;
  *
  * Acepta ?days=N para un backfill puntual con una ventana más amplia que
  * el default de 7 días (ej. tras agregar soporte para un remitente que no
- * se estaba sincronizando). En Vercel corre con maxDuration=60, así que un
- * backfill grande (cientos de correos) puede excederlo — para eso, mejor
- * correrlo local con `npm run dev` primero.
+ * se estaba sincronizando).
+ *
+ * Un backfill grande NO cabe en los 60s de `maxDuration`, así que el sync se
+ * corta solo antes del tope (ver SYNC_TIME_BUDGET_MS en lib/sync.ts) y la
+ * respuesta trae `timedOut: true` con cuántos correos y usuarios quedan.
+ * Eso es una respuesta normal, no un error: la llamada hizo trabajo real y
+ * repetirla continúa desde donde se quedó, porque el sync es idempotente.
+ * Antes de esto la función se pasaba del tope y Vercel devolvía
+ * FUNCTION_INVOCATION_TIMEOUT — sin JSON y sin decir qué alcanzó a hacer.
  */
 export async function GET(request: NextRequest) {
   const secret = process.env.SYNC_SECRET;
