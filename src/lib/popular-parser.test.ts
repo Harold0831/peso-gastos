@@ -96,6 +96,20 @@ describe("parsePopularAmount", () => {
   it("parsea RD$ con espacio después", () => {
     expect(parsePopularAmount("RD$ 24,988.00")).toBe(24988);
   });
+
+  it("parsea un monto SIN parte entera (US$.09)", () => {
+    // Visto en producción: un cargo de nueve centavos de Google Cloud llega
+    // como "US$.09". La expresión exigía un dígito antes del punto, así que
+    // devolvía null y se perdía la transacción ENTERA.
+    expect(parsePopularAmount("US$.09")).toBe(0.09);
+  });
+
+  it("y eso no rompe los montos con miles", () => {
+    // La alternativa con decimales va primero justo para esto: si se probara
+    // antes la de solo enteros, "1,500.00" se cortaría en "1".
+    expect(parsePopularAmount("RD$1,500.00")).toBe(1500);
+    expect(parsePopularAmount("US$11.99")).toBe(11.99);
+  });
 });
 
 describe("parsePopularDate", () => {
@@ -545,6 +559,41 @@ describe("un enlace <https://…> no convierte el correo en HTML", () => {
       type: "expense",
       merchant: "Retiro cajero BANCO POPULAR OFICINA U.C",
       amount: 1500,
+    });
+  });
+});
+
+// Cargo de nueve centavos en dólares. Dos cosas a la vez: monto sin parte
+// entera ("US$.09") y moneda USD. Nombre y tarjeta enmascarados a mano.
+const CONSUMO_CENTAVOS = ` \r
+<https://www.popularenlinea.com/SiteCollectionImages/Mailer/MAYO/Popular\r
+-Logo-Banco.png>\r
+\r
+Estimado (a) NOMBRE APELLIDO \r
+\r
+Gracias por utilizar su Tarjeta Visa Débito Clásica, terminada en 4444. \r
+\r
+A continuación detalle de la transacción:\r
+\r
+\r
+Monto \tMoneda \tFecha \tComercio \tEstatus \t\r
+US$.09\t Dólar estadounidense\t 01/09/2026 \tGOOGLE *CLOUD BVWT7Q\r
+Aprobada\t\r
+\r
+En caso de requerir mayor información, puede comunicarse con nosotros\r
+llamando al 809-544-5555. \r
+`;
+
+describe("un monto de centavos no puede perder la transacción", () => {
+  it("lee US$.09 como 0.09 en dólares", () => {
+    expect(parsePopularEmail("Notificación de Consumo", CONSUMO_CENTAVOS)).toEqual({
+      type: "expense",
+      merchant: "GOOGLE *CLOUD BVWT7Q",
+      amount: 0.09,
+      currency: "USD",
+      date: new Date("2026-09-01T16:00:00.000Z"),
+      card_last4: "4444",
+      available_balance: null,
     });
   });
 });

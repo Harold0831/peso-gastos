@@ -718,6 +718,12 @@ nada (el ciclo completo: `curl` → reproducir en un test → arreglar):
   resto de la tabla estuviera perfecta. Sigue exigiendo una marca de moneda
   (`RD`, `US` o `$`) porque también se usa sobre prosa, donde cualquier número
   suelto sería un número de cuenta.
+  **Y un monto puede venir SIN parte entera**: un cargo de nueve centavos de
+  Google Cloud llega como `US$.09`. Exigir un dígito antes del punto costaba la
+  transacción completa. La alternativa con decimales (`[\d,]*\.\d{1,2}`) va
+  ANTES que la de solo enteros a propósito: al revés, `1,500.00` se cortaría
+  en `1` — un error mucho peor que no leer el correo, porque entraría como una
+  transacción plausible.
 - **Las transacciones DECLINADAS** usan el asunto de una aprobada pero otra
   plantilla (sin columna Moneda), así que no se parsean — y se reportaban como
   "el banco cambió el formato", guardando una muestra por cada intento fallido

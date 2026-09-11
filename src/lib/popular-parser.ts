@@ -53,7 +53,12 @@ import { toPlainText } from "./qik-parser";
  * número suelto capturaría un número de cuenta o una fecha.
  */
 export function parsePopularAmount(raw: string): number | null {
-  const match = raw.match(/(?:RD|US)\s*\$?\s*([\d,]+(?:\.\d{1,2})?)|\$\s*([\d,]+(?:\.\d{1,2})?)/i);
+  // El número: con parte entera ("1,500.00", "200") o SIN ella (".09").
+  // La primera alternativa va antes a propósito, para que "1,500.00" no se
+  // corte en "1" al probar la segunda.
+  const match = raw.match(
+    /(?:RD|US)\s*\$?\s*([\d,]*\.\d{1,2}|[\d,]+)|\$\s*([\d,]*\.\d{1,2}|[\d,]+)/i,
+  );
   if (!match) return null;
   const value = Number((match[1] ?? match[2]).replace(/,/g, ""));
   return Number.isFinite(value) ? value : null;
