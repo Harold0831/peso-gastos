@@ -620,6 +620,28 @@ sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
   Vercel — el stack real nunca se manda al navegador. Ojo al probarlo: el
   boundary es un client component, así que el HTML del SSR **no** lo trae; se
   pinta tras hidratar (mirar el HTML crudo con curl engaña).
+- **Aviso cuando una LECTURA revienta** (`src/instrumentation.ts`, 2026-09-14):
+  el monitoreo cubría los fallos del SYNC y nada más. Cuando Supabase empezó a
+  devolver 502, a un usuario le salió la pantalla de error y Harold se enteró
+  porque el amigo le mandó una **captura** — el mismo fallo mudo que el
+  monitoreo del sync vino a cerrar, pero del lado de las pantallas.
+  `onRequestError` es el punto de Next.js donde aterriza cualquier excepción del
+  servidor (server components, actions, route handlers) **con su `digest`**, que
+  es el mismo número que la persona ve bajo "Código del error": así el aviso y
+  la captura se cruzan sin adivinar. El webhook de Gmail NO duplica avisos
+  porque captura su propia excepción y responde un 500, así que nada escapa
+  hasta aquí.
+  **El freno es en MEMORIA, al revés que en `rate-limit.ts`**, y el motivo es la
+  causa más probable de estos errores: si Supabase no responde,
+  `check_rate_limit()` falla ABIERTO y el throttle de `reportIssue` deja pasar
+  todo — quince personas tocando la app llenarían Discord con el mismo mensaje.
+  Un `Map` por instancia no sirve para frenar a un atacante (por eso el de
+  seguridad vive en Postgres) pero es justo lo que hace falta cuando la base ES
+  el problema. Se agrupa por digest, 1 aviso/5 min, con tope de claves.
+  Se ignoran los digests `NEXT_REDIRECT`/`NEXT_NOT_FOUND` (control de flujo, no
+  fallos) y no se intenta nada fuera del runtime `nodejs` (el middleware corre
+  en edge, donde no existe el cliente de Supabase). Verificado quitando a mano
+  el freno: falla el test de los 30 errores iguales.
 - **Reintentos ante un gateway caído** (`retry-fetch.ts`, 2026-09-14): Supabase
   devolvió `502 Bad Gateway` y `504 Gateway Timeout` en ráfagas de unos
   segundos. `supabase-js` **no reintenta nada**, así que ese 502 llegaba tal
