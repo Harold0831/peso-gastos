@@ -19,7 +19,13 @@ export default async function ProfilePage() {
         name="Demo"
         email="demo@peso.app"
         avatarUrl={null}
-        gmail={{ linked: false, email: null, syncEnabled: false, enabledBanks: null }}
+        gmail={{
+          linked: false,
+          email: null,
+          syncEnabled: false,
+          enabledBanks: null,
+          disabledReason: "revoked",
+        }}
         hasPasskey={false}
         autoConfirmEnabled
         pushConfigured={false}
@@ -48,6 +54,7 @@ export default async function ProfilePage() {
         email: gmail.email,
         syncEnabled: gmail.syncEnabled,
         enabledBanks: gmail.enabledBanks,
+        disabledReason: gmail.disabledReason,
       }}
       hasPasskey={credentials.length > 0}
       autoConfirmEnabled={autoConfirmEnabled}

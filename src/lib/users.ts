@@ -80,6 +80,9 @@ export async function saveGmailAccount(
         email,
         refresh_token_enc: encryptToken(refreshToken),
         sync_enabled: true,
+        // Se limpia al reconectar: si se quedara pegado, una cuenta ya
+        // arreglada seguiría enseñando el motivo viejo para siempre.
+        sync_disabled_reason: null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" },
@@ -227,27 +230,54 @@ export async function setHomeCurrencyForUser(userId: string, currency: Currency)
   if (error) throw new Error(`Error guardando moneda de casa: ${error.message}`);
 }
 
+/**
+ * Por qué se apagó el sync de una cuenta (migración `0019`).
+ *
+ * `revoked` se arregla reconectando; `no_mailbox` NO se arregla con nada —la
+ * cuenta de Google no tiene buzón de Gmail— así que decirle a esa persona
+ * "Reconectar Gmail" la mete en un bucle: reconecta, se reactiva, vuelve a
+ * fallar. Eso es lo que esta distinción viene a evitar.
+ */
+export type GmailDisabledReason = "revoked" | "no_mailbox";
+
 export interface GmailStatus {
   linked: boolean;
   email: string | null;
   syncEnabled: boolean;
   /** Ids de bank-parser.ts elegidos por el usuario; null = todos. */
   enabledBanks: string[] | null;
+  /** Solo tiene sentido con `syncEnabled: false`. */
+  disabledReason: GmailDisabledReason;
+}
+
+/** Las filas apagadas ANTES de la migración 0019 no tienen motivo, y hasta
+ *  entonces el único motivo posible era el token revocado. */
+function parseDisabledReason(value: unknown): GmailDisabledReason {
+  return value === "no_mailbox" ? "no_mailbox" : "revoked";
 }
 
 export async function getGmailStatus(userId: string): Promise<GmailStatus> {
   const { data, error } = await getSupabaseAdmin()
     .from("gmail_accounts")
-    .select("email, sync_enabled, enabled_banks")
+    .select("email, sync_enabled, enabled_banks, sync_disabled_reason")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw new Error(`Error cargando estado de Gmail: ${error.message}`);
-  if (!data) return { linked: false, email: null, syncEnabled: false, enabledBanks: null };
+  if (!data) {
+    return {
+      linked: false,
+      email: null,
+      syncEnabled: false,
+      enabledBanks: null,
+      disabledReason: "revoked",
+    };
+  }
   return {
     linked: true,
     email: data.email,
     syncEnabled: data.sync_enabled,
     enabledBanks: data.enabled_banks,
+    disabledReason: parseDisabledReason(data.sync_disabled_reason),
   };
 }
 

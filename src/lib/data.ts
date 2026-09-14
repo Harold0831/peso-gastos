@@ -728,11 +728,17 @@ export async function getAttentionItems(): Promise<AttentionItem[]> {
 
     const gmail = await getGmailStatus(userId);
     if (gmail.linked && !gmail.syncEnabled) {
+      // Sin buzón de Gmail no hay nada que reconectar: mandar a esta persona a
+      // "reconectar" la mete en un bucle (reconecta, se reactiva, vuelve a
+      // fallar). Lo único accionable para ella es registrar a mano.
+      const sinBuzon = gmail.disabledReason === "no_mailbox";
       items.push({
         id: "gmail-expired",
-        title: "El acceso a tu Gmail expiró",
-        detail: "Reconéctalo para que tus transacciones sigan llegando",
-        href: "/profile",
+        title: sinBuzon ? "Esta cuenta de Google no tiene Gmail" : "El acceso a tu Gmail expiró",
+        detail: sinBuzon
+          ? "No hay correos que importar — registra tus gastos con el botón +"
+          : "Reconéctalo para que tus transacciones sigan llegando",
+        href: sinBuzon ? "/transactions/new" : "/profile",
         kind: "gmail",
         dismissible: false, // rotura real: no se puede ignorar
       });

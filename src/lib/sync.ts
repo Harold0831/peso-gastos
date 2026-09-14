@@ -14,7 +14,7 @@ import { matchesRule } from "./merchant-history";
 import { loadMerchantRules, visibleCategoryNames } from "./auto-confirm";
 import { budgetAlertBody, detectBudgetCrossing } from "./budget-alert";
 import { formatMoney } from "./format";
-import { getHomeCurrencyForUser } from "./users";
+import { getHomeCurrencyForUser, type GmailDisabledReason } from "./users";
 import { toPlainText } from "./qik-parser";
 import { parseEmailWithAi, suggestCategory } from "./gemini";
 import { getSupabaseAdmin } from "./supabase";
@@ -195,6 +195,20 @@ async function unknownMessageIds(userId: string, ids: string[]): Promise<string[
 }
 
 /**
+ * Apaga el sync de una cuenta dejando escrito POR QUÉ (migración `0019`).
+ *
+ * El motivo no es decoración: decide qué se le dice a la persona. `revoked` se
+ * arregla reconectando; `no_mailbox` no se arregla con nada, así que el banner
+ * de "Reconectar Gmail" la metería en un bucle.
+ */
+async function disableSync(userId: string, reason: GmailDisabledReason): Promise<void> {
+  await getSupabaseAdmin()
+    .from("gmail_accounts")
+    .update({ sync_enabled: false, sync_disabled_reason: reason })
+    .eq("user_id", userId);
+}
+
+/**
  * Pipeline de sincronización de UN usuario:
  *  1. Trae correos recientes de los remitentes de Qik (ver gmail.ts)
  *  2. Descarta los que ya existen para ese usuario (gmail_message_id)
@@ -249,7 +263,7 @@ export async function runSyncForUser(
     );
   } catch (err) {
     if (err instanceof GmailAuthError) {
-      await supabase.from("gmail_accounts").update({ sync_enabled: false }).eq("user_id", userId);
+      await disableSync(userId, "revoked");
       return { synced: 0, errors: ["El acceso a Gmail expiró — reconéctalo desde tu perfil"] };
     }
     // Cuenta de Google sin buzón de Gmail (se entró con un correo @live,
@@ -257,7 +271,7 @@ export async function runSyncForUser(
     // sync y NO se le dice que reconecte: reconectar volvería a fallar igual.
     // Sin esto el sync lo reintentaba en cada corrida, para siempre.
     if (err instanceof GmailUnavailableError) {
-      await supabase.from("gmail_accounts").update({ sync_enabled: false }).eq("user_id", userId);
+      await disableSync(userId, "no_mailbox");
       return {
         synced: 0,
         errors: ["Esta cuenta de Google no tiene Gmail: no hay correos que importar"],

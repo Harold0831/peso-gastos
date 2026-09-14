@@ -30,6 +30,8 @@ interface ProfileClientProps {
     linked: boolean;
     email: string | null;
     syncEnabled: boolean;
+    /** Por qué se apagó el sync; solo importa con syncEnabled false. */
+    disabledReason: "revoked" | "no_mailbox";
     /** Ids de bancos a sincronizar; null = todos. */
     enabledBanks: string[] | null;
   };
@@ -310,6 +312,23 @@ export function ProfileClient({
               Conectado como <span className="font-semibold">{gmail.email}</span>
             </p>
           </div>
+        ) : gmail.linked && gmail.disabledReason === "no_mailbox" ? (
+          // Esta cuenta de Google no tiene buzón de Gmail (se entró con una
+          // dirección @live, @outlook…). No hay botón porque no hay nada que
+          // el usuario pueda hacer: reconectar lo devolvería justo aquí.
+          <>
+            <div className="mt-3 flex items-center gap-2.5">
+              <span className="h-2 w-2 rounded-pill bg-warning" />
+              <p className="text-[13px] font-medium text-ink">
+                <span className="font-semibold">{gmail.email}</span> no tiene Gmail
+              </p>
+            </div>
+            <p className="mt-3 text-[13px] leading-relaxed text-ink-muted">
+              Entraste con una cuenta de Google que no tiene buzón de correo, así que no hay
+              notificaciones de bancos que importar. Puedes registrar tus gastos con el botón{" "}
+              <span className="font-semibold">+</span>, y todo lo demás de Peso funciona igual.
+            </p>
+          </>
         ) : gmail.linked ? (
           <>
             <div className="mt-3 flex items-center gap-2.5">

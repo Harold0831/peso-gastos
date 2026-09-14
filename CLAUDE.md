@@ -125,6 +125,7 @@ supabase/
 ├── migrations/0016_...sql   # categories.icon: de emoji a claves de SVG
 ├── migrations/0017_...sql   # failed_emails (muestras cifradas) + source 'ai'
 ├── migrations/0018_...sql   # deja de guardar raw_email_snippet (y lo vacía)
+├── migrations/0019_...sql   # gmail_accounts.sync_disabled_reason (por qué se apagó)
 └── seed.sql                 # Categorías por defecto (globales, user_id null)
 public/sw.js                 # Service worker (solo estáticos, nunca navegación)
 design/                      # Referencias visuales (no es código de la app)
@@ -678,10 +679,23 @@ sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
   que leer—, así que el mensaje NO dice "reconéctalo". Sin separarlos, el sync
   reintentaba esa cuenta en CADA corrida, para siempre, gastando una llamada a
   la API y una línea de error en el monitoreo de todos los syncs.
-  **Pendiente**: la cuenta queda con `sync_enabled=false`, así que al usuario
-  le sale el banner genérico de "Reconectar Gmail" — que para él es un
-  callejón sin salida. Distinguirlo en la UI pide una columna
-  `sync_disabled_reason` en `gmail_accounts`.
+  **La UI lo distingue** (`gmail_accounts.sync_disabled_reason`, migración
+  `0019`): `sync_enabled=false` significaba una sola cosa —"reconecta"— y a esta
+  persona ese mensaje la metía en un bucle: reconecta, se reactiva, vuelve a
+  fallar. Ahora `revoked` (se arregla reconectando) y `no_mailbox` (no se
+  arregla con nada) escriben mensajes distintos en los TRES sitios donde
+  aparecía: el banner del dashboard, la campanita (`getAttentionItems`) y el
+  perfil — donde además **desaparece el botón**, porque ofrecer una acción que
+  no puede funcionar es peor que no ofrecer ninguna. El enlace lleva a
+  `/transactions/new`, que es lo único accionable para esa persona.
+  También la guía de primeros pasos (`OnboardingCard`): un usuario sin buzón es
+  por definición un usuario sin transacciones, así que era justo el que más se
+  topaba con el "Vincula tu Gmail" imposible. Con `noMailbox` se saltan los
+  pasos de Gmail y el CTA pasa a registrar el primer gasto.
+  `null` = apagado antes de la migración y se lee como `revoked`, que es lo que
+  era hasta ahora. `saveGmailAccount` lo limpia al reconectar: si se quedara
+  pegado, una cuenta ya arreglada seguiría enseñando el motivo viejo.
+  Comprobado en pantalla (no solo en el código) forzando el estado en modo demo.
 
 ## Parsers de correos bancarios
 

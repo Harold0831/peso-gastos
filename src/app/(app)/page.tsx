@@ -46,7 +46,13 @@ export default async function DashboardPage() {
   const now = new Date();
 
   let displayName = "Demo";
-  let gmail: GmailStatus = { linked: true, email: null, syncEnabled: true, enabledBanks: null };
+  let gmail: GmailStatus = {
+    linked: true,
+    email: null,
+    syncEnabled: true,
+    enabledBanks: null,
+    disabledReason: "revoked",
+  };
   let hasPasskey = true; // en demo no se muestra el banner de Face ID
   if (isSupabaseConfigured()) {
     const userId = await requireUserId();
@@ -193,12 +199,20 @@ export default async function DashboardPage() {
       </section>
 
       {/* Guía de primeros pasos (solo sin transacciones) */}
-      {isNewUser && <OnboardingCard gmailLinked={gmail.linked && gmail.syncEnabled} />}
+      {isNewUser && (
+        <OnboardingCard
+          gmailLinked={gmail.linked && gmail.syncEnabled}
+          noMailbox={gmail.linked && !gmail.syncEnabled && gmail.disabledReason === "no_mailbox"}
+        />
+      )}
 
-      {/* Reconectar Gmail — NO descartable: es una rotura real del sync */}
+      {/* Gmail roto — NO descartable: es una rotura real del sync. El texto
+          cambia según el motivo: a quien entró con una cuenta de Google SIN
+          buzón (…@live, …@outlook) mandarlo a "reconectar" lo mete en un
+          bucle, porque reconectar no arregla que no exista el buzón. */}
       {!isNewUser && gmail.linked && !gmail.syncEnabled && (
         <Link
-          href="/profile"
+          href={gmail.disabledReason === "no_mailbox" ? "/transactions/new" : "/profile"}
           className="mt-3.5 flex items-center gap-3 rounded-[14px] border border-warning/40 bg-warning/10 px-4 py-3"
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-warning/10 text-warning">
@@ -206,10 +220,14 @@ export default async function DashboardPage() {
           </span>
           <span className="flex-1">
             <span className="block text-[13px] font-semibold text-ink">
-              El acceso a tu Gmail expiró
+              {gmail.disabledReason === "no_mailbox"
+                ? "Esta cuenta de Google no tiene Gmail"
+                : "El acceso a tu Gmail expiró"}
             </span>
             <span className="block text-[11px] text-ink-muted">
-              Reconéctalo para que el sync siga funcionando · Toca aquí
+              {gmail.disabledReason === "no_mailbox"
+                ? "No hay correos que importar · Registra tus gastos aquí"
+                : "Reconéctalo para que el sync siga funcionando · Toca aquí"}
             </span>
           </span>
           <ChevronIcon className="text-ink-muted" />

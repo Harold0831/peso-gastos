@@ -6,6 +6,10 @@ import { SUPPORTED_BANKS } from "@/lib/banks";
 
 interface OnboardingCardProps {
   gmailLinked: boolean;
+  /** La cuenta de Google no tiene buzón de Gmail: no hay nada que vincular,
+   *  así que la guía no puede pedirlo (sería el mismo callejón sin salida que
+   *  el banner de "Reconectar Gmail"). */
+  noMailbox?: boolean;
 }
 
 function Step({
@@ -48,7 +52,7 @@ function Step({
  * El paso de bancos se marca hecho al vincular Gmail: todos vienen
  * activados por defecto, ajustar la lista es opcional (vive en /profile).
  */
-export function OnboardingCard({ gmailLinked }: OnboardingCardProps) {
+export function OnboardingCard({ gmailLinked, noMailbox }: OnboardingCardProps) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -62,30 +66,47 @@ export function OnboardingCard({ gmailLinked }: OnboardingCardProps) {
     <section className="mt-3.5 rounded-card border border-line bg-card p-5">
       <h2 className="text-[15px] font-bold tracking-tight text-ink">Bienvenido a Peso</h2>
       <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
-        Conecta tu correo y tus gastos se registran solos cuando el banco te notifica.
+        {noMailbox
+          ? "Tu cuenta de Google no tiene Gmail, así que no hay correos que importar — pero todo lo demás funciona igual."
+          : "Conecta tu correo y tus gastos se registran solos cuando el banco te notifica."}
       </p>
       <ol className="mt-4 space-y-3.5">
         <Step done number={1} title="Crea tu cuenta" detail="Listo — ya estás dentro." />
-        <Step
-          done={gmailLinked}
-          number={2}
-          title="Vincula tu Gmail"
-          detail="Peso solo lee las notificaciones de tus bancos, nada más."
-        />
-        <Step
-          done={gmailLinked}
-          number={3}
-          title="Elige tus bancos"
-          detail={`Soportamos ${bankNames}. Todos quedan activados — desmarca los que no uses en tu perfil.`}
-        />
+        {!noMailbox && (
+          <>
+            <Step
+              done={gmailLinked}
+              number={2}
+              title="Vincula tu Gmail"
+              detail="Peso solo lee las notificaciones de tus bancos, nada más."
+            />
+            <Step
+              done={gmailLinked}
+              number={3}
+              title="Elige tus bancos"
+              detail={`Soportamos ${bankNames}. Todos quedan activados — desmarca los que no uses en tu perfil.`}
+            />
+          </>
+        )}
         <Step
           done={false}
-          number={4}
+          number={noMailbox ? 2 : 4}
           title="Registra tu primer gasto"
-          detail="Llega solo desde el correo, o créalo a mano con el botón +."
+          detail={
+            noMailbox
+              ? "Con el botón + del centro. También puedes dictarlo desde un atajo de iOS."
+              : "Llega solo desde el correo, o créalo a mano con el botón +."
+          }
         />
       </ol>
-      {gmailLinked ? (
+      {noMailbox ? (
+        <Link
+          href="/transactions/new"
+          className="mt-5 block w-full rounded-btn bg-accent-solid py-3 text-center text-[13px] font-bold text-white"
+        >
+          Registrar mi primer gasto
+        </Link>
+      ) : gmailLinked ? (
         <Link
           href="/profile"
           className="mt-5 block w-full rounded-btn bg-accent-solid py-3 text-center text-[13px] font-bold text-white"
