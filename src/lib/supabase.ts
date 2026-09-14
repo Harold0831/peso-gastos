@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { fetchWithRetry } from "./retry-fetch";
 
 /**
  * Todo el acceso a datos ocurre en el SERVIDOR (server components, server
@@ -34,6 +35,13 @@ export function getSupabaseAdmin(): SupabaseClient {
     }
     cached = createClient(url, key, {
       auth: { persistSession: false, autoRefreshToken: false },
+      // Un `fetch` que reintenta los fallos del GATEWAY (502/503/504 y caídas
+      // de red) en las lecturas. Va aquí, en el cliente, y no en cada consulta
+      // porque el problema no es de ninguna consulta en concreto: Supabase
+      // devolvió 502 en ráfagas y eso le pintó a un usuario la pantalla de
+      // error en un `select` de una fila. Ver retry-fetch.ts — solo GET, para
+      // no arriesgarse a duplicar una escritura.
+      global: { fetch: fetchWithRetry },
     });
   }
   return cached;

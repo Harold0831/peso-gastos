@@ -620,6 +620,28 @@ sesión)`. `GET /api/sync` (Bearer `SYNC_SECRET`) sincroniza a todos los
   Vercel — el stack real nunca se manda al navegador. Ojo al probarlo: el
   boundary es un client component, así que el HTML del SSR **no** lo trae; se
   pinta tras hidratar (mirar el HTML crudo con curl engaña).
+- **Reintentos ante un gateway caído** (`retry-fetch.ts`, 2026-09-14): Supabase
+  devolvió `502 Bad Gateway` y `504 Gateway Timeout` en ráfagas de unos
+  segundos. `supabase-js` **no reintenta nada**, así que ese 502 llegaba tal
+  cual a `data.ts` —que lanza— y un usuario vio la pantalla de "Algo salió mal
+  al cargar esto" en una consulta que solo pedía UNA fila por índice; el mismo
+  hipo tumbó el webhook de Gmail con un 500. Lo que estos errores tienen en
+  común es que **no son de la consulta**: es la puerta de entrada la que no
+  atendió, y repetir medio segundo después suele bastar. El `fetch` con
+  reintentos se enchufa en `createClient` (`global.fetch`) y no consulta por
+  consulta, porque el problema no era de ninguna consulta en concreto.
+  **Solo se reintentan los GET**, y eso es lo que sostiene todo: ante un 502 no
+  se sabe si la petición llegó a aplicarse, así que repetir un `insert` podría
+  duplicar una transacción — el fallo que esta app ya ha arreglado dos veces.
+  PostgREST usa GET para todas las lecturas, que es de donde salieron los dos
+  síntomas. Tampoco se reintentan 400/404/500 (la petición SÍ llegó y algo real
+  falló; repetirla solo retrasa el error) ni un `AbortError` (es una decisión de
+  quien llama). Verificado quitando a mano el guard de GET: fallan los dos tests
+  que protegen las escrituras.
+  Ojo con el diagnóstico: los avisos de Discord llegaron **sin throttle** porque
+  `check_rate_limit()` vive en Postgres y falla ABIERTO — cuando lo que está
+  caído es Supabase, el freno no puede frenar. Ruidoso, pero fue lo que hizo
+  visible el patrón.
 - **Tokens revocados**: si un usuario quita el acceso desde su cuenta de
   Google, el refresh falla con `invalid_grant` → `GmailAuthError` →
   `gmail_accounts.sync_enabled=false`. El dashboard y el perfil muestran
