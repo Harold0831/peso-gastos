@@ -412,8 +412,11 @@ export function isIgnorablePopularEmail(subject: string, rawBody?: string): bool
   // "Cancelacion tarjeta de débito" avisa de que una tarjeta dejó de existir
   // (se reemplazó o se dio de baja). No mueve dinero: no hay nada que
   // registrar, y sin esto se reportaba como un parser roto.
+  // "Apertura de cuenta" es la bienvenida de una cuenta nueva ("tu CUENTA
+  // SAN POPULAR está activa"): promocional puro, sin monto ni comercio, no
+  // representa ningún movimiento — visto en producción el 2026-09-26.
   if (
-    /actualizaci[oó]n de l[ií]mite|tarjeta bloqueada|cancelaci[oó]n\s+(de\s+)?tarjeta/i.test(
+    /actualizaci[oó]n de l[ií]mite|tarjeta bloqueada|cancelaci[oó]n\s+(de\s+)?tarjeta|apertura de cuenta/i.test(
       subject,
     )
   ) {

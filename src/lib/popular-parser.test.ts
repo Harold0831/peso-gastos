@@ -231,6 +231,12 @@ describe("isIgnorablePopularEmail", () => {
     expect(isIgnorablePopularEmail("Cancelación de tarjeta de crédito")).toBe(true);
   });
 
+  it("ignora la apertura de cuenta (bienvenida, sin monto)", () => {
+    // Visto en producción el 2026-09-26: "tu CUENTA SAN POPULAR está activa",
+    // promocional puro, sin monto ni comercio.
+    expect(isIgnorablePopularEmail("Apertura de cuenta")).toBe(true);
+  });
+
   it("no ignora un consumo", () => {
     expect(isIgnorablePopularEmail("Notificación de Consumo")).toBe(false);
   });

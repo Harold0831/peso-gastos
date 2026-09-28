@@ -795,6 +795,8 @@ nada (el ciclo completo: `curl` → reproducir en un test → arreglar):
   por ATM). Ambos se despachan con regex en vez de `includes` de la frase larga.
 - **Qik: "Tu tarjeta ha sido bloqueada"** (por CVV/PIN incorrecto) es una alerta
   de seguridad, no un movimiento — el consumo que la provocó ni se cobró.
+- **Popular: "Apertura de cuenta"** (2026-09-26) es la bienvenida de una cuenta
+  nueva ("tu CUENTA SAN POPULAR está activa"): promocional puro, sin monto.
 - **"Notificación Depósito de Nómina" se ignora por un motivo DISTINTO** al del
   resto de ignorables, y conviene no confundirlo: sí es un movimiento de dinero
   —el sueldo de alguien, probablemente su mayor ingreso del mes— pero **el
